@@ -190,6 +190,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   );
 
   const totalTime = getTotalTimeForPhase(phase);
+  const prevConfiguredDurationRef = useRef<number>(totalTime);
 
   // Switch phase
   const switchPhase = useCallback(
@@ -197,6 +198,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       setPhase(nextPhase);
       const nextDuration = getTotalTimeForPhase(nextPhase);
       setTimeLeft(nextDuration);
+      prevConfiguredDurationRef.current = nextDuration;
       setIsRunning(autoStart);
       if (autoStart && settings.soundAlerts) {
         playPomodoroStart();
@@ -281,14 +283,18 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     switchPhase,
   ]);
 
-  // Adjust timeLeft when settings change if not running
+  // Only adjust timeLeft if interval duration in settings actually changes and timer is not running
   useEffect(() => {
-    if (!isRunning) {
-      setTimeLeft(getTotalTimeForPhase(phase));
+    const configuredDuration = getTotalTimeForPhase(phase);
+    if (configuredDuration !== prevConfiguredDurationRef.current) {
+      prevConfiguredDurationRef.current = configuredDuration;
+      if (!isRunning) {
+        setTimeLeft(configuredDuration);
+      }
     }
   }, [settings.workMinutes, settings.shortBreakMinutes, settings.longBreakMinutes, phase, isRunning, getTotalTimeForPhase]);
 
-  // Spacebar shortcut
+  // Spacebar shortcut to pause / play
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -297,12 +303,18 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         document.activeElement?.tagName !== 'TEXTAREA'
       ) {
         e.preventDefault();
-        setIsRunning((prev) => !prev);
+        setIsRunning((prev) => {
+          const next = !prev;
+          if (next && settings.soundAlerts) {
+            playPomodoroStart();
+          }
+          return next;
+        });
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [settings.soundAlerts]);
 
   // Fullscreen handler
   const toggleFullscreen = async () => {
