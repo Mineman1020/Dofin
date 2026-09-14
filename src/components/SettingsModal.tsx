@@ -1,0 +1,1862 @@
+import React, { useState, useRef } from 'react';
+import {
+  X,
+  Palette,
+  Timer,
+  Volume2,
+  Sliders,
+  Type,
+  Eye,
+  Sun,
+  Moon,
+  RotateCcw,
+  Sparkles,
+  Check,
+  Play,
+  Upload,
+  Music,
+  Shield,
+  User,
+  Music2,
+  Circle,
+} from 'lucide-react';
+import {
+  ClockSettings,
+  PomodoroSettings,
+  ClockFontFamily,
+  ClockDigitSize,
+  SoundAlertChoice,
+} from '../types';
+import {
+  THEME_PRESETS,
+  FONT_OPTIONS,
+  SOUND_ALERT_OPTIONS,
+  SAMPLE_QUOTES,
+  POMODORO_THEME_PRESETS,
+  getResolvedPomodoroTheme,
+  getMaxPomodoroFontSize,
+} from '../utils/constants';
+import {
+  triggerSoundAlert,
+  playHourlyChime,
+  playTickSound,
+} from '../utils/audio';
+
+interface SettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  clockSettings: ClockSettings;
+  onUpdateClockSettings: (settings: Partial<ClockSettings>) => void;
+  pomodoroSettings: PomodoroSettings;
+  onUpdatePomodoroSettings: (settings: Partial<PomodoroSettings>) => void;
+  userName: string;
+  onOpenNameModal: () => void;
+  onResetDefaults: () => void;
+  isDarkMode: boolean;
+  onToggleDarkMode: () => void;
+}
+
+type TabKey = 'clock' | 'pomodoro' | 'general';
+
+export const SettingsModal: React.FC<SettingsModalProps> = ({
+  isOpen,
+  onClose,
+  clockSettings,
+  onUpdateClockSettings,
+  pomodoroSettings,
+  onUpdatePomodoroSettings,
+  userName,
+  onOpenNameModal,
+  onResetDefaults,
+  isDarkMode,
+  onToggleDarkMode,
+}) => {
+  const [activeTab, setActiveTab] = useState<TabKey>('clock');
+  const [activeSoundPreviewPhase, setActiveSoundPreviewPhase] = useState<string | null>(null);
+  const [previewPomoPhase, setPreviewPomoPhase] = useState<'work' | 'shortBreak' | 'longBreak'>('work');
+
+  const fileInputWorkRef = useRef<HTMLInputElement | null>(null);
+  const fileInputBreakRef = useRef<HTMLInputElement | null>(null);
+  const fileInputLongBreakRef = useRef<HTMLInputElement | null>(null);
+
+  if (!isOpen) return null;
+
+  const currentTheme =
+    THEME_PRESETS.find((t) => t.id === clockSettings.themeId) || THEME_PRESETS[0];
+
+  const selectedFont =
+    FONT_OPTIONS.find((f) => f.id === clockSettings.fontFamily) || FONT_OPTIONS[0];
+
+  const selectedPomoFont =
+    FONT_OPTIONS.find((f) => f.id === (pomodoroSettings.fontFamily || 'outfit')) || FONT_OPTIONS[0];
+
+  const resolvedPomoTheme = getResolvedPomodoroTheme(pomodoroSettings, clockSettings, isDarkMode);
+
+  const activePomoColor =
+    previewPomoPhase === 'work'
+      ? resolvedPomoTheme.workColor
+      : previewPomoPhase === 'shortBreak'
+      ? resolvedPomoTheme.shortBreakColor
+      : resolvedPomoTheme.longBreakColor;
+
+  const activePomoMinutes =
+    previewPomoPhase === 'work'
+      ? pomodoroSettings.workMinutes
+      : previewPomoPhase === 'shortBreak'
+      ? pomodoroSettings.shortBreakMinutes
+      : pomodoroSettings.longBreakMinutes;
+
+  const currentPomoCircle = pomodoroSettings.circleSize || 320;
+  const currentPomoRingWidth = pomodoroSettings.ringWidth || 8;
+  // Dynamically calculate the maximum allowable font size so digits never collide with or merge into the ring stroke
+  const maxSafePomoFontSize = getMaxPomodoroFontSize(currentPomoCircle, currentPomoRingWidth);
+  const effectivePomoFontSize =
+    pomodoroSettings.timerFontSize && pomodoroSettings.timerFontSize > 0
+      ? Math.min(pomodoroSettings.timerFontSize, maxSafePomoFontSize)
+      : 0;
+
+  const handlePomoCircleChange = (newSize: number) => {
+    const newMaxSafe = getMaxPomodoroFontSize(newSize, currentPomoRingWidth);
+    const currentFont = pomodoroSettings.timerFontSize || 0;
+    if (currentFont > newMaxSafe) {
+      // Automatically constrain font size down to the new safe boundary
+      onUpdatePomodoroSettings({ circleSize: newSize, timerFontSize: newMaxSafe });
+    } else {
+      onUpdatePomodoroSettings({ circleSize: newSize });
+    }
+  };
+
+  const ensureHex = (color: string | undefined, fallback: string): string => {
+    if (!color) return fallback;
+    if (/^#[0-9A-Fa-f]{6}$/.test(color)) return color;
+    if (/^#[0-9A-Fa-f]{3}$/.test(color)) {
+      return `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`;
+    }
+    return fallback;
+  };
+
+  // Resolve custom colors
+  const activeBg =
+    clockSettings.themeId === 'custom' && clockSettings.customBg
+      ? clockSettings.customBg
+      : currentTheme.bgClass.includes('bg-[')
+      ? currentTheme.bgClass.replace('bg-[', '').replace(']', '')
+      : currentTheme.id === 'oled-black'
+      ? '#000000'
+      : currentTheme.isDark
+      ? '#0f111a'
+      : '#f7f5f0';
+
+  const activeTextColor =
+    clockSettings.themeId === 'custom' && clockSettings.customTextColor
+      ? clockSettings.customTextColor
+      : currentTheme.textColor;
+
+  const activeAccentColor =
+    clockSettings.themeId === 'custom' && clockSettings.customAccentColor
+      ? clockSettings.customAccentColor
+      : currentTheme.accentColor;
+
+  // Handle custom audio file uploads
+  const handleAudioUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: 'work' | 'break' | 'longBreak'
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (type === 'work') {
+        onUpdatePomodoroSettings({
+          workSound: 'custom',
+          customWorkSoundData: dataUrl,
+          customWorkSoundName: file.name,
+        });
+        triggerSoundAlert('custom', dataUrl);
+      } else if (type === 'break') {
+        onUpdatePomodoroSettings({
+          shortBreakSound: 'custom',
+          customBreakSoundData: dataUrl,
+          customBreakSoundName: file.name,
+        });
+        triggerSoundAlert('custom', dataUrl);
+      } else {
+        onUpdatePomodoroSettings({
+          longBreakSound: 'custom',
+          customLongBreakSoundData: dataUrl,
+          customLongBreakSoundName: file.name,
+        });
+        triggerSoundAlert('custom', dataUrl);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div
+      id="settings-modal-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-fadeIn"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        id="settings-modal-container"
+        className="w-full max-w-2xl max-h-[92vh] bg-neutral-900 border border-neutral-800 text-neutral-100 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+      >
+        {/* Header with Dark Mode Toggle */}
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-neutral-800 bg-neutral-900/95">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+              <Sliders className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-white tracking-tight">
+                Desk Clock Settings
+              </h2>
+              <p className="text-[11px] text-neutral-400">
+                Live preview & customizable clocks, sounds, and intervals
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Quick Dark Mode Toggle */}
+            <button
+              id="settings-dark-mode-toggle"
+              onClick={onToggleDarkMode}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-800 bg-neutral-800/80 hover:bg-neutral-700 text-xs font-medium text-neutral-200 transition-colors cursor-pointer"
+              title={`Switch to ${isDarkMode ? 'Light' : 'Dark'} Mode`}
+            >
+              {isDarkMode ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Light</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Dark</span>
+                </>
+              )}
+            </button>
+
+            <button
+              id="settings-close-btn"
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+              aria-label="Close settings"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex border-b border-neutral-800 bg-neutral-950/60 px-6 pt-2">
+          <button
+            id="tab-clock-btn"
+            onClick={() => setActiveTab('clock')}
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-medium border-b-2 transition-all cursor-pointer ${
+              activeTab === 'clock'
+                ? 'border-amber-400 text-amber-400'
+                : 'border-transparent text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <Palette className="w-3.5 h-3.5" />
+            <span>Clock & Appearance</span>
+          </button>
+          <button
+            id="tab-pomodoro-btn"
+            onClick={() => setActiveTab('pomodoro')}
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-medium border-b-2 transition-all cursor-pointer ${
+              activeTab === 'pomodoro'
+                ? 'border-amber-400 text-amber-400'
+                : 'border-transparent text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <Timer className="w-3.5 h-3.5" />
+            <span>Pomodoro & Sound Alerts</span>
+          </button>
+          <button
+            id="tab-general-btn"
+            onClick={() => setActiveTab('general')}
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-medium border-b-2 transition-all cursor-pointer ${
+              activeTab === 'general'
+                ? 'border-amber-400 text-amber-400'
+                : 'border-transparent text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <Volume2 className="w-3.5 h-3.5" />
+            <span>Audio & Profile</span>
+          </button>
+        </div>
+
+        {/* LIVE REAL-TIME PREVIEW CONTAINER */}
+        <div className="px-6 pt-4 pb-3 bg-neutral-950/60 border-b border-neutral-800/80">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-mono tracking-wider text-amber-400 uppercase flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Live Visual Preview (Updates Instantly)</span>
+            </span>
+            <span className="text-[10px] text-neutral-400 font-mono">
+              {activeTab === 'clock'
+                ? `Theme: ${currentTheme.name} • Font: ${selectedFont.name}`
+                : activeTab === 'pomodoro'
+                ? `Theme: ${POMODORO_THEME_PRESETS.find((p) => p.id === (pomodoroSettings.themeId || 'classic-tomato'))?.name || 'Custom'} • Font: ${selectedPomoFont.name}`
+                : `Profile: ${userName || 'Friend'}`}
+            </span>
+          </div>
+
+          <div
+            id="settings-live-preview-box"
+            className="w-full rounded-2xl p-4 transition-all duration-300 border border-neutral-700/80 shadow-inner flex flex-col items-center justify-center text-center overflow-hidden min-h-[110px]"
+            style={{
+              backgroundColor: activeTab === 'pomodoro' ? resolvedPomoTheme.bg : activeBg,
+              color: activeTab === 'pomodoro' ? resolvedPomoTheme.textColor : activeTextColor,
+              filter: activeTab === 'clock' ? `brightness(${clockSettings.brightness}%)` : 'none',
+            }}
+          >
+            {activeTab === 'clock' ? (
+              <>
+                {(clockSettings.showDayOfWeek || clockSettings.showDate) && (
+                  <div className="text-[11px] tracking-wider uppercase opacity-75 mb-1 font-sans">
+                    {clockSettings.showDayOfWeek && <span>Thursday </span>}
+                    {clockSettings.showDayOfWeek && clockSettings.showDate && <span>• </span>}
+                    {clockSettings.showDate && <span>September 10, 2026</span>}
+                  </div>
+                )}
+                <div
+                  className="text-3xl sm:text-4xl font-semibold tracking-wider flex items-baseline justify-center"
+                  style={{ fontFamily: selectedFont.cssFamily }}
+                >
+                  <span>10:45</span>
+                  {clockSettings.showSeconds && (
+                    <span className="text-xl opacity-75 ml-1" style={{ color: activeAccentColor }}>
+                      :22
+                    </span>
+                  )}
+                  {clockSettings.showAmPm && clockSettings.timeFormat === '12h' && (
+                    <span
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-current ml-2"
+                      style={{ color: activeAccentColor }}
+                    >
+                      AM
+                    </span>
+                  )}
+                </div>
+                {clockSettings.showQuote && clockSettings.quoteText && (
+                  <div className="text-[11px] opacity-75 italic mt-1 max-w-sm truncate font-sans">
+                    &ldquo;{clockSettings.quoteText}&rdquo;
+                  </div>
+                )}
+              </>
+            ) : activeTab === 'pomodoro' ? (
+              <div className="w-full flex flex-col items-center gap-3">
+                {/* Interactive Phase Preview Switcher */}
+                <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/25 border border-white/10">
+                  <button
+                    id="preview-pomo-phase-work"
+                    type="button"
+                    onClick={() => setPreviewPomoPhase('work')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      previewPomoPhase === 'work'
+                        ? 'text-white shadow-sm font-bold scale-105'
+                        : 'opacity-70 hover:opacity-100'
+                    }`}
+                    style={
+                      previewPomoPhase === 'work'
+                        ? { backgroundColor: resolvedPomoTheme.workColor }
+                        : {}
+                    }
+                  >
+                    Focus ({pomodoroSettings.workMinutes}m)
+                  </button>
+                  <button
+                    id="preview-pomo-phase-short"
+                    type="button"
+                    onClick={() => setPreviewPomoPhase('shortBreak')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      previewPomoPhase === 'shortBreak'
+                        ? 'text-white shadow-sm font-bold scale-105'
+                        : 'opacity-70 hover:opacity-100'
+                    }`}
+                    style={
+                      previewPomoPhase === 'shortBreak'
+                        ? { backgroundColor: resolvedPomoTheme.shortBreakColor }
+                        : {}
+                    }
+                  >
+                    Short Break ({pomodoroSettings.shortBreakMinutes}m)
+                  </button>
+                  <button
+                    id="preview-pomo-phase-long"
+                    type="button"
+                    onClick={() => setPreviewPomoPhase('longBreak')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      previewPomoPhase === 'longBreak'
+                        ? 'text-white shadow-sm font-bold scale-105'
+                        : 'opacity-70 hover:opacity-100'
+                    }`}
+                    style={
+                      previewPomoPhase === 'longBreak'
+                        ? { backgroundColor: resolvedPomoTheme.longBreakColor }
+                        : {}
+                    }
+                  >
+                    Long Break ({pomodoroSettings.longBreakMinutes}m)
+                  </button>
+                </div>
+
+                {/* Pomodoro Meter & Details Row */}
+                <div className="flex flex-wrap items-center justify-center gap-5 sm:gap-8">
+                  {/* Miniature Meter */}
+                  <div className="relative w-[92px] h-[92px] flex items-center justify-center shrink-0">
+                    <svg
+                      width={92}
+                      height={92}
+                      viewBox="0 0 92 92"
+                      className="transform -rotate-90 w-full h-full"
+                    >
+                      {/* Background track */}
+                      <circle
+                        cx={46}
+                        cy={46}
+                        r={37}
+                        stroke={
+                          resolvedPomoTheme.isDark
+                            ? 'rgba(255, 255, 255, 0.14)'
+                            : 'rgba(0, 0, 0, 0.1)'
+                        }
+                        strokeWidth={Math.max(3, Math.min(10, Math.round((pomodoroSettings.ringWidth || 8) * 0.7)))}
+                        fill="transparent"
+                      />
+                      {/* Progress circle */}
+                      <circle
+                        cx={46}
+                        cy={46}
+                        r={37}
+                        stroke={activePomoColor}
+                        strokeWidth={Math.max(3, Math.min(10, Math.round((pomodoroSettings.ringWidth || 8) * 0.7)))}
+                        strokeDasharray={232.48}
+                        strokeDashoffset={232.48 * 0.3}
+                        strokeLinecap="round"
+                        fill="transparent"
+                        className="transition-all duration-300"
+                        style={{
+                          filter: resolvedPomoTheme.enableGlow
+                            ? `drop-shadow(0 0 8px ${activePomoColor}90)`
+                            : 'none',
+                        }}
+                      />
+                    </svg>
+
+                    {/* Digits and phase badge */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-1 pointer-events-none select-none">
+                      <span
+                        className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full border mb-0.5"
+                        style={{
+                          borderColor: `${activePomoColor}50`,
+                          backgroundColor: `${activePomoColor}20`,
+                          color: activePomoColor,
+                        }}
+                      >
+                        {previewPomoPhase === 'work' ? 'FOCUS' : previewPomoPhase === 'shortBreak' ? 'SHORT' : 'LONG'}
+                      </span>
+                      <span
+                        className="text-lg font-bold leading-none tracking-tight"
+                        style={{
+                          fontFamily: selectedPomoFont.cssFamily,
+                          color: resolvedPomoTheme.textColor,
+                        }}
+                      >
+                        {String(activePomoMinutes).padStart(2, '0')}:00
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Meter Specs Badges */}
+                  <div className="flex flex-col items-start gap-1.5 text-left text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] opacity-75 font-sans">Active Color:</span>
+                      <div className="flex items-center gap-1 font-mono text-[11px] font-bold">
+                        <span
+                          className="w-3 h-3 rounded-full border border-white/20 inline-block shadow-sm"
+                          style={{ backgroundColor: activePomoColor }}
+                        />
+                        <span className="uppercase">{activePomoColor}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] opacity-80">
+                      <span className="px-2 py-0.5 rounded-md bg-black/20 border border-white/10 font-mono">
+                        Ring: {pomodoroSettings.ringWidth || 8}px
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-black/20 border border-white/10 font-mono">
+                        {pomodoroSettings.enableGlow !== false ? 'Glow: ON' : 'Glow: OFF'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] opacity-60 italic">
+                      Click phases above to preview each color
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-4 py-2">
+                <div className="text-left font-sans">
+                  <span className="text-xs opacity-75 block">Profile & Audio Setup</span>
+                  <span className="text-base font-bold">{userName || 'Friend'}</span>
+                </div>
+                <div className="h-6 w-px bg-neutral-700" />
+                <button
+                  type="button"
+                  onClick={() => playHourlyChime()}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold border border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Test Audio Chime</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tab Content Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 text-sm">
+          {/* TAB 1: CLOCK & APPEARANCE */}
+          {activeTab === 'clock' && (
+            <div className="space-y-6">
+              {/* Theme Presets */}
+              <div className="space-y-3">
+                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Color Theme Presets</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {THEME_PRESETS.map((theme) => {
+                    const isSelected = clockSettings.themeId === theme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        id={`theme-btn-${theme.id}`}
+                        onClick={() => {
+                          onUpdateClockSettings({
+                            themeId: theme.id,
+                            ...(theme.id !== 'custom'
+                              ? {
+                                  customBg: '',
+                                  customTextColor: theme.textColor,
+                                  customAccentColor: theme.accentColor,
+                                }
+                              : {}),
+                          });
+                          if (theme.isDark !== undefined && theme.isDark !== isDarkMode) {
+                            onToggleDarkMode();
+                          }
+                        }}
+                        className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between h-20 cursor-pointer ${
+                          isSelected
+                            ? 'border-amber-400 ring-2 ring-amber-400/20 shadow-md'
+                            : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/40'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <div
+                            className="w-5 h-5 rounded-full border border-neutral-700 flex items-center justify-center"
+                            style={{
+                              backgroundColor:
+                                theme.id === 'custom'
+                                  ? clockSettings.customBg || '#111'
+                                  : theme.bgClass.includes('bg-[')
+                                  ? theme.bgClass.replace('bg-[', '').replace(']', '')
+                                  : theme.id === 'oled-black'
+                                  ? '#000000'
+                                  : theme.isDark
+                                  ? '#0f111a'
+                                  : '#f7f5f0',
+                            }}
+                          >
+                            <span
+                              className="w-2 h-2 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  theme.id === 'custom'
+                                    ? clockSettings.customTextColor || '#fff'
+                                    : theme.textColor,
+                              }}
+                            />
+                          </div>
+                          {isSelected && (
+                            <span className="w-4 h-4 rounded-full bg-amber-400 text-neutral-950 flex items-center justify-center">
+                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-medium text-neutral-200 truncate">
+                          {theme.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Color Pickers */}
+              <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
+                <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block">
+                  Fine-tune Colors (Real-Time Palette)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-neutral-400 block mb-1.5">
+                      Background Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        id="custom-bg-picker"
+                        value={ensureHex(clockSettings.customBg || activeBg, '#0f111a')}
+                        onChange={(e) =>
+                          onUpdateClockSettings({
+                            themeId: 'custom',
+                            customBg: e.target.value,
+                          })
+                        }
+                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-neutral-300 uppercase truncate">
+                        {clockSettings.customBg || currentTheme.name}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-neutral-400 block mb-1.5">
+                      Digits Text Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        id="custom-text-picker"
+                        value={ensureHex(clockSettings.customTextColor || activeTextColor, '#ffffff')}
+                        onChange={(e) =>
+                          onUpdateClockSettings({
+                            themeId: 'custom',
+                            customTextColor: e.target.value,
+                          })
+                        }
+                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-neutral-300 uppercase truncate">
+                        {clockSettings.customTextColor || currentTheme.textColor}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-neutral-400 block mb-1.5">Accent Color</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        id="custom-accent-picker"
+                        value={ensureHex(clockSettings.customAccentColor || activeAccentColor, '#f59e0b')}
+                        onChange={(e) =>
+                          onUpdateClockSettings({
+                            themeId: 'custom',
+                            customAccentColor: e.target.value,
+                          })
+                        }
+                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-neutral-300 uppercase truncate">
+                        {clockSettings.customAccentColor || currentTheme.accentColor}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Extended Typography & Font Picker (13 Fonts) */}
+              <div className="space-y-3">
+                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Type className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Clock Digit Fonts ({FONT_OPTIONS.length} Distinct Styles)</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                  {FONT_OPTIONS.map((font) => {
+                    const isSelected = clockSettings.fontFamily === font.id;
+                    return (
+                      <button
+                        key={font.id}
+                        id={`font-btn-${font.id}`}
+                        onClick={() => onUpdateClockSettings({ fontFamily: font.id })}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-amber-400 bg-amber-500/10 text-white shadow-sm'
+                            : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/40 text-neutral-300'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs text-neutral-400 font-sans truncate">
+                            {font.name}
+                          </span>
+                          {isSelected && <Check className="w-3 h-3 text-amber-400 shrink-0" />}
+                        </div>
+                        <span
+                          className="text-base tracking-wider block truncate"
+                          style={{ fontFamily: font.cssFamily }}
+                        >
+                          {font.sample}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Digit Size & Scale */}
+              <div className="space-y-3">
+                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Digit Size On Screen</span>
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['medium', 'large', 'huge', 'fill'] as ClockDigitSize[]).map((size) => {
+                    const isSelected = clockSettings.digitSize === size;
+                    return (
+                      <button
+                        key={size}
+                        id={`size-btn-${size}`}
+                        onClick={() => onUpdateClockSettings({ digitSize: size })}
+                        className={`py-2 px-3 rounded-xl border text-xs font-medium capitalize text-center transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-amber-400 bg-amber-500/15 text-amber-300'
+                            : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/40 text-neutral-400'
+                        }`}
+                      >
+                        {size === 'fill' ? 'Fill View' : size}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* What to see on screen */}
+              <div className="space-y-3">
+                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Eye className="w-3.5 h-3.5 text-amber-400" />
+                  <span>What to See on Screen</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Seconds */}
+                  <label
+                    id="toggle-seconds-label"
+                    className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                  >
+                    <div>
+                      <span className="text-xs font-medium text-neutral-200 block">
+                        Seconds Counter
+                      </span>
+                      <span className="text-[11px] text-neutral-500">Display active seconds</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="toggle-seconds"
+                      checked={clockSettings.showSeconds}
+                      onChange={(e) => onUpdateClockSettings({ showSeconds: e.target.checked })}
+                      className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                    />
+                  </label>
+
+                  {/* 12h / 24h format */}
+                  <label
+                    id="toggle-format-label"
+                    className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                  >
+                    <div>
+                      <span className="text-xs font-medium text-neutral-200 block">
+                        24-Hour Military Format
+                      </span>
+                      <span className="text-[11px] text-neutral-500">Toggle 12h vs 24h</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="toggle-format"
+                      checked={clockSettings.timeFormat === '24h'}
+                      onChange={(e) =>
+                        onUpdateClockSettings({ timeFormat: e.target.checked ? '24h' : '12h' })
+                      }
+                      className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                    />
+                  </label>
+
+                  {/* AM/PM */}
+                  <label
+                    id="toggle-ampm-label"
+                    className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                  >
+                    <div>
+                      <span className="text-xs font-medium text-neutral-200 block">
+                        AM / PM Indicator
+                      </span>
+                      <span className="text-[11px] text-neutral-500">(Active in 12h mode)</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="toggle-ampm"
+                      checked={clockSettings.showAmPm}
+                      onChange={(e) => onUpdateClockSettings({ showAmPm: e.target.checked })}
+                      className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                    />
+                  </label>
+
+                  {/* Day of Week */}
+                  <label
+                    id="toggle-day-label"
+                    className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                  >
+                    <div>
+                      <span className="text-xs font-medium text-neutral-200 block">Day of Week</span>
+                      <span className="text-[11px] text-neutral-500">e.g., Thursday, Monday</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="toggle-day"
+                      checked={clockSettings.showDayOfWeek}
+                      onChange={(e) => onUpdateClockSettings({ showDayOfWeek: e.target.checked })}
+                      className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                    />
+                  </label>
+
+                  {/* Full Date */}
+                  <label
+                    id="toggle-date-label"
+                    className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                  >
+                    <div>
+                      <span className="text-xs font-medium text-neutral-200 block">
+                        Full Calendar Date
+                      </span>
+                      <span className="text-[11px] text-neutral-500">e.g., September 10, 2026</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="toggle-date"
+                      checked={clockSettings.showDate}
+                      onChange={(e) => onUpdateClockSettings({ showDate: e.target.checked })}
+                      className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                    />
+                  </label>
+
+                  {/* Focus Mantra */}
+                  <label
+                    id="toggle-quote-label"
+                    className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                  >
+                    <div>
+                      <span className="text-xs font-medium text-neutral-200 block">
+                        Focus Mantra / Quote
+                      </span>
+                      <span className="text-[11px] text-neutral-500">Customizable inspiration</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="toggle-quote"
+                      checked={clockSettings.showQuote}
+                      onChange={(e) => onUpdateClockSettings({ showQuote: e.target.checked })}
+                      className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                    />
+                  </label>
+                </div>
+
+                {/* Custom Quote text input */}
+                {clockSettings.showQuote && (
+                  <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label htmlFor="quote-text-input" className="text-xs text-neutral-300 font-medium">
+                        Customize Desk Mantra / Goal:
+                      </label>
+                      <button
+                        id="random-quote-btn"
+                        type="button"
+                        onClick={() => {
+                          const rand =
+                            SAMPLE_QUOTES[Math.floor(Math.random() * SAMPLE_QUOTES.length)];
+                          onUpdateClockSettings({ quoteText: rand });
+                        }}
+                        className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>Shuffle</span>
+                      </button>
+                    </div>
+                    <input
+                      id="quote-text-input"
+                      type="text"
+                      value={clockSettings.quoteText}
+                      onChange={(e) => onUpdateClockSettings({ quoteText: e.target.value })}
+                      maxLength={90}
+                      className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
+                      placeholder="Enter a motivational note or intention..."
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Brightness Dimmer */}
+              <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sun className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Screen Brightness Dimmer</span>
+                  </span>
+                  <span className="font-mono text-amber-400">{clockSettings.brightness}%</span>
+                </div>
+                <input
+                  id="brightness-slider"
+                  type="range"
+                  min={20}
+                  max={100}
+                  step={5}
+                  value={clockSettings.brightness}
+                  onChange={(e) =>
+                    onUpdateClockSettings({ brightness: parseInt(e.target.value, 10) })
+                  }
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: POMODORO & SOUND ALERTS */}
+          {activeTab === 'pomodoro' && (
+            <div className="space-y-6">
+              {/* SECTION 1: POMODORO COLOR THEMES */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Pomodoro Theme Presets</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdatePomodoroSettings({
+                        themeId: 'classic-tomato',
+                        customBg: '#0a0a0a',
+                        customTextColor: '#ffffff',
+                        customWorkColor: '#ef4444',
+                        customShortBreakColor: '#0284c7',
+                        customLongBreakColor: '#10b981',
+                        ringWidth: 8,
+                        enableGlow: true,
+                      });
+                    }}
+                    className="text-[11px] text-neutral-400 hover:text-amber-400 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Pomodoro Theme</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {POMODORO_THEME_PRESETS.map((preset) => {
+                    const isSelected = (pomodoroSettings.themeId || 'classic-tomato') === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        id={`pomo-theme-btn-${preset.id}`}
+                        type="button"
+                        onClick={() => {
+                          onUpdatePomodoroSettings({
+                            themeId: preset.id,
+                            customBg: preset.bgColor,
+                            customTextColor: preset.textColor,
+                            customWorkColor: preset.workColor,
+                            customShortBreakColor: preset.shortBreakColor,
+                            customLongBreakColor: preset.longBreakColor,
+                          });
+                          if (preset.isDark !== undefined && preset.isDark !== isDarkMode) {
+                            onToggleDarkMode();
+                          }
+                        }}
+                        className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between cursor-pointer ${
+                          isSelected
+                            ? 'border-amber-400 ring-2 ring-amber-400/20 bg-neutral-900 shadow-md'
+                            : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/40'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-1">
+                          <span className="text-xs font-semibold text-neutral-200 truncate">
+                            {preset.name}
+                          </span>
+                          {isSelected && (
+                            <span className="w-4 h-4 rounded-full bg-amber-400 text-neutral-950 flex items-center justify-center shrink-0">
+                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-neutral-400 mb-2">
+                          <span>{preset.isDark ? 'Dark Theme' : 'Light Theme'}</span>
+                          {preset.id === 'sync' && (
+                            <span className="text-amber-400 font-medium">Clock Sync</span>
+                          )}
+                        </div>
+
+                        {/* Phase color preview indicators */}
+                        <div className="flex items-center gap-1.5 pt-1 border-t border-neutral-800/60">
+                          <span className="text-[10px] text-neutral-400 font-mono">Colors:</span>
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm"
+                            title="Focus color"
+                            style={{ backgroundColor: preset.workColor }}
+                          />
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm"
+                            title="Short Break color"
+                            style={{ backgroundColor: preset.shortBreakColor }}
+                          />
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm"
+                            title="Long Break color"
+                            style={{ backgroundColor: preset.longBreakColor }}
+                          />
+                          {preset.id === 'sync' && (
+                            <span className="text-[10px] text-amber-400/80 italic ml-1">
+                              (Auto syncs)
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SECTION 2: POMODORO METER & PROGRESS RING STYLING */}
+              <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 space-y-4">
+                <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Meter & Progress Ring Styling</span>
+                </span>
+
+                {/* Ring Width Selection */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-neutral-400 font-medium">Progress Ring Stroke Width</span>
+                    <span className="font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-bold">
+                      {pomodoroSettings.ringWidth || 8}px
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { label: 'Thin (4px)', width: 4 },
+                      { label: 'Standard (8px)', width: 8 },
+                      { label: 'Bold (12px)', width: 12 },
+                      { label: 'Thick (16px)', width: 16 },
+                    ].map((item) => {
+                      const isCurrent = (pomodoroSettings.ringWidth || 8) === item.width;
+                      return (
+                        <button
+                          key={item.width}
+                          id={`ring-width-btn-${item.width}`}
+                          type="button"
+                          onClick={() => onUpdatePomodoroSettings({ ringWidth: item.width })}
+                          className={`py-2 px-2 rounded-lg border text-xs font-medium transition-all cursor-pointer text-center ${
+                            isCurrent
+                              ? 'border-amber-400 bg-amber-500/15 text-amber-300 shadow-sm'
+                              : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800 text-neutral-400'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Glow Effect Toggle */}
+                <div className="flex items-center justify-between pt-2 border-t border-neutral-800/80">
+                  <div>
+                    <span className="text-xs font-semibold text-neutral-200 block">
+                      Ambient Radiant Ring Glow
+                    </span>
+                    <span className="text-[11px] text-neutral-400 block">
+                      Casts dynamic luminous glow & background aura matching active phase
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      id="pomo-glow-toggle"
+                      type="checkbox"
+                      checked={pomodoroSettings.enableGlow !== false}
+                      onChange={(e) =>
+                        onUpdatePomodoroSettings({ enableGlow: e.target.checked })
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                  </label>
+                </div>
+              </div>
+
+              {/* SECTION 3: FINE-TUNE POMODORO PALETTE (CUSTOM COLOR PICKERS) */}
+              <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block">
+                    Fine-tune Pomodoro Palette (Hex & Color Pickers)
+                  </span>
+                  <span className="text-[10px] text-neutral-500 font-mono">
+                    Mode: {pomodoroSettings.themeId || 'classic-tomato'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {/* Focus Color */}
+                  <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-neutral-800">
+                    <label className="text-xs text-neutral-400 block mb-1.5 flex items-center justify-between">
+                      <span>Focus Session Color</span>
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resolvedPomoTheme.workColor }} />
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        id="custom-pomo-work-picker"
+                        value={ensureHex(pomodoroSettings.customWorkColor || resolvedPomoTheme.workColor, '#ef4444')}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({
+                            themeId: 'custom',
+                            customWorkColor: e.target.value,
+                          })
+                        }
+                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-neutral-200 uppercase">
+                        {pomodoroSettings.customWorkColor || resolvedPomoTheme.workColor}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Short Break Color */}
+                  <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-neutral-800">
+                    <label className="text-xs text-neutral-400 block mb-1.5 flex items-center justify-between">
+                      <span>Short Break Color</span>
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resolvedPomoTheme.shortBreakColor }} />
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        id="custom-pomo-short-picker"
+                        value={ensureHex(pomodoroSettings.customShortBreakColor || resolvedPomoTheme.shortBreakColor, '#0284c7')}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({
+                            themeId: 'custom',
+                            customShortBreakColor: e.target.value,
+                          })
+                        }
+                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-neutral-200 uppercase">
+                        {pomodoroSettings.customShortBreakColor || resolvedPomoTheme.shortBreakColor}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Long Break Color */}
+                  <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-neutral-800">
+                    <label className="text-xs text-neutral-400 block mb-1.5 flex items-center justify-between">
+                      <span>Long Break Color</span>
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resolvedPomoTheme.longBreakColor }} />
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        id="custom-pomo-long-picker"
+                        value={ensureHex(pomodoroSettings.customLongBreakColor || resolvedPomoTheme.longBreakColor, '#10b981')}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({
+                            themeId: 'custom',
+                            customLongBreakColor: e.target.value,
+                          })
+                        }
+                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-neutral-200 uppercase">
+                        {pomodoroSettings.customLongBreakColor || resolvedPomoTheme.longBreakColor}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Background Color */}
+                  <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-neutral-800">
+                    <label className="text-xs text-neutral-400 block mb-1.5 flex items-center justify-between">
+                      <span>Canvas Background</span>
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resolvedPomoTheme.bg }} />
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        id="custom-pomo-bg-picker"
+                        value={ensureHex(pomodoroSettings.customBg || resolvedPomoTheme.bg, '#0a0a0a')}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({
+                            themeId: 'custom',
+                            customBg: e.target.value,
+                          })
+                        }
+                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-neutral-200 uppercase">
+                        {pomodoroSettings.customBg || resolvedPomoTheme.bg}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Text & Digits Color */}
+                  <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-neutral-800">
+                    <label className="text-xs text-neutral-400 block mb-1.5 flex items-center justify-between">
+                      <span>Digits & Text Color</span>
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resolvedPomoTheme.textColor }} />
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        id="custom-pomo-text-picker"
+                        value={ensureHex(pomodoroSettings.customTextColor || resolvedPomoTheme.textColor, '#ffffff')}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({
+                            themeId: 'custom',
+                            customTextColor: e.target.value,
+                          })
+                        }
+                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-neutral-200 uppercase">
+                        {pomodoroSettings.customTextColor || resolvedPomoTheme.textColor}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pomodoro Appearance: Font & Circle Size */}
+              <div className="space-y-4">
+                <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Pomodoro Timer Appearance</span>
+                </span>
+
+                {/* Pomodoro Font Selection */}
+                <div className="space-y-2.5">
+                  <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Type className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Timer Number Font</span>
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {FONT_OPTIONS.map((font) => {
+                      const isSelected =
+                        (pomodoroSettings.fontFamily || 'outfit') === font.id;
+                      return (
+                        <button
+                          key={font.id}
+                          id={`pomo-font-btn-${font.id}`}
+                          onClick={() => onUpdatePomodoroSettings({ fontFamily: font.id })}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? 'border-amber-400 bg-amber-500/10 text-white shadow-sm'
+                              : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/40 text-neutral-300'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs text-neutral-400 font-sans truncate">
+                              {font.name}
+                            </span>
+                            {isSelected && <Check className="w-3 h-3 text-amber-400 shrink-0" />}
+                          </div>
+                          <span
+                            className="text-base tracking-wider block truncate"
+                            style={{ fontFamily: font.cssFamily }}
+                          >
+                            25:00
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Circle Size Customization */}
+                <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="pomo-circle-size-slider" className="text-xs font-semibold text-neutral-200 flex items-center gap-1.5">
+                      <Circle className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Pomodoro Timer Size (Circle)</span>
+                    </label>
+                    <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      {pomodoroSettings.circleSize || 320}px
+                    </span>
+                  </div>
+
+                  <input
+                    id="pomo-circle-size-slider"
+                    type="range"
+                    min={220}
+                    max={850}
+                    step={10}
+                    value={currentPomoCircle}
+                    onChange={(e) => handlePomoCircleChange(parseInt(e.target.value, 10))}
+                    className="w-full accent-amber-400 cursor-pointer"
+                  />
+
+                  {/* Preset Buttons */}
+                  <div className="grid grid-cols-5 gap-1.5 pt-1">
+                    {[
+                      { label: 'Compact', size: 240 },
+                      { label: 'Standard', size: 320 },
+                      { label: 'Large', size: 440 },
+                      { label: 'Huge', size: 580 },
+                      { label: 'Massive', size: 740 },
+                    ].map((preset) => {
+                      const isCurrent = currentPomoCircle === preset.size;
+                      return (
+                        <button
+                          key={preset.size}
+                          id={`circle-size-${preset.label.toLowerCase()}`}
+                          type="button"
+                          onClick={() => handlePomoCircleChange(preset.size)}
+                          className={`py-1.5 px-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer text-center truncate ${
+                            isCurrent
+                              ? 'border-amber-400 bg-amber-500/15 text-amber-300 font-bold'
+                              : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800 text-neutral-400'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Timer Digit Font Size Customization (Dynamically limited with respect to ring size) */}
+                <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="pomo-font-size-slider" className="text-xs font-semibold text-neutral-200 flex items-center gap-1.5">
+                      <Type className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Pomodoro Timer Font Size</span>
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-mono text-neutral-400 bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
+                        Max: {maxSafePomoFontSize}px
+                      </span>
+                      <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                        {effectivePomoFontSize > 0
+                          ? `${effectivePomoFontSize}px`
+                          : 'Auto (Proportional)'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <input
+                    id="pomo-font-size-slider"
+                    type="range"
+                    min={0}
+                    max={maxSafePomoFontSize}
+                    step={1}
+                    value={effectivePomoFontSize}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      onUpdatePomodoroSettings({ timerFontSize: Math.min(val, maxSafePomoFontSize) });
+                    }}
+                    className="w-full accent-amber-400 cursor-pointer"
+                  />
+
+                  {/* Font Size Presets: Tailored to current ring safe limit */}
+                  <div className="grid grid-cols-5 gap-1.5 pt-1">
+                    {[
+                      { label: 'Auto', size: 0 },
+                      {
+                        label: 'Compact',
+                        size: Math.min(maxSafePomoFontSize, Math.max(30, Math.round(maxSafePomoFontSize * 0.55))),
+                      },
+                      {
+                        label: 'Balanced',
+                        size: Math.min(maxSafePomoFontSize, Math.max(36, Math.round(maxSafePomoFontSize * 0.72))),
+                      },
+                      {
+                        label: 'Large',
+                        size: Math.min(maxSafePomoFontSize, Math.max(42, Math.round(maxSafePomoFontSize * 0.88))),
+                      },
+                      { label: 'Max Safe', size: maxSafePomoFontSize },
+                    ].map((preset) => {
+                      const isCurrent = effectivePomoFontSize === preset.size;
+                      return (
+                        <button
+                          key={preset.label}
+                          id={`pomo-font-size-${preset.label.toLowerCase().replace(/\s+/g, '-')}`}
+                          type="button"
+                          onClick={() => onUpdatePomodoroSettings({ timerFontSize: preset.size })}
+                          className={`py-1 px-1 rounded-lg border text-xs font-medium transition-all cursor-pointer text-center truncate ${
+                            isCurrent
+                              ? 'border-amber-400 bg-amber-500/15 text-amber-300 font-bold'
+                              : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800 text-neutral-400'
+                          }`}
+                        >
+                          <div className="truncate">{preset.label}</div>
+                          {preset.size > 0 && (
+                            <div className="text-[10px] opacity-75 font-mono">{preset.size}px</div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <p className="text-[11px] text-neutral-400 leading-tight">
+                    Font size is dynamically capped to {maxSafePomoFontSize}px for this {currentPomoCircle}px ring to prevent the timer numbers from merging into the ring stroke.
+                  </p>
+                </div>
+              </div>
+
+              {/* Durations */}
+              <div className="space-y-4">
+                <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block">
+                  Interval Durations
+                </span>
+
+                {/* Work Duration */}
+                <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="work-duration-slider" className="text-xs font-semibold text-neutral-200">
+                      Work / Focus Duration
+                    </label>
+                    <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      {pomodoroSettings.workMinutes} minutes
+                    </span>
+                  </div>
+                  <input
+                    id="work-duration-slider"
+                    type="range"
+                    min={1}
+                    max={90}
+                    step={1}
+                    value={pomodoroSettings.workMinutes}
+                    onChange={(e) =>
+                      onUpdatePomodoroSettings({ workMinutes: parseInt(e.target.value, 10) })
+                    }
+                    className="w-full accent-amber-400 cursor-pointer"
+                  />
+                </div>
+
+                {/* Short Break */}
+                <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="short-break-slider" className="text-xs font-semibold text-neutral-200">
+                      Short Break Duration
+                    </label>
+                    <span className="text-xs font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
+                      {pomodoroSettings.shortBreakMinutes} minutes
+                    </span>
+                  </div>
+                  <input
+                    id="short-break-slider"
+                    type="range"
+                    min={1}
+                    max={30}
+                    step={1}
+                    value={pomodoroSettings.shortBreakMinutes}
+                    onChange={(e) =>
+                      onUpdatePomodoroSettings({
+                        shortBreakMinutes: parseInt(e.target.value, 10),
+                      })
+                    }
+                    className="w-full accent-sky-400 cursor-pointer"
+                  />
+                </div>
+
+                {/* Long Break */}
+                <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="long-break-slider" className="text-xs font-semibold text-neutral-200">
+                      Long Break Duration
+                    </label>
+                    <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      {pomodoroSettings.longBreakMinutes} minutes
+                    </span>
+                  </div>
+                  <input
+                    id="long-break-slider"
+                    type="range"
+                    min={5}
+                    max={60}
+                    step={5}
+                    value={pomodoroSettings.longBreakMinutes}
+                    onChange={(e) =>
+                      onUpdatePomodoroSettings({ longBreakMinutes: parseInt(e.target.value, 10) })
+                    }
+                    className="w-full accent-emerald-400 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* SOUND ALERTS CUSTOMIZATION & UPLOAD */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Music className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Sound Alerts for Each Phase</span>
+                  </span>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <span className="text-xs text-neutral-400">Enable Sound Alerts</span>
+                    <input
+                      type="checkbox"
+                      checked={pomodoroSettings.soundAlerts}
+                      onChange={(e) =>
+                        onUpdatePomodoroSettings({ soundAlerts: e.target.checked })
+                      }
+                      className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                    />
+                  </label>
+                </div>
+
+                {/* Phase 1: Work Session End Sound */}
+                <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-amber-400 block">
+                        Work Session End Sound
+                      </span>
+                      <span className="text-[11px] text-neutral-500">
+                        Plays when work session finishes
+                      </span>
+                    </div>
+                    <button
+                      id="test-work-sound-btn"
+                      onClick={() =>
+                        triggerSoundAlert(
+                          pomodoroSettings.workSound,
+                          pomodoroSettings.customWorkSoundData
+                        )
+                      }
+                      className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Play className="w-3 h-3 text-amber-400" />
+                      <span>Test Sound</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {SOUND_ALERT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        id={`work-sound-${opt.id}`}
+                        onClick={() => {
+                          if (opt.id === 'custom') {
+                            fileInputWorkRef.current?.click();
+                          } else {
+                            onUpdatePomodoroSettings({ workSound: opt.id });
+                            triggerSoundAlert(opt.id);
+                          }
+                        }}
+                        className={`p-2 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                          pomodoroSettings.workSound === opt.id
+                            ? 'border-amber-400 bg-amber-500/10 text-white'
+                            : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="font-medium block truncate">{opt.name}</span>
+                        {opt.id === 'custom' && pomodoroSettings.customWorkSoundName && (
+                          <span className="text-[10px] text-amber-400 truncate block">
+                            {pomodoroSettings.customWorkSoundName}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="file"
+                    ref={fileInputWorkRef}
+                    onChange={(e) => handleAudioUpload(e, 'work')}
+                    accept="audio/*"
+                    className="hidden"
+                  />
+                </div>
+
+                {/* Phase 2: Short Break End Sound */}
+                <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-sky-400 block">
+                        Short Break End Sound
+                      </span>
+                      <span className="text-[11px] text-neutral-500">
+                        Plays when short break is over
+                      </span>
+                    </div>
+                    <button
+                      id="test-break-sound-btn"
+                      onClick={() =>
+                        triggerSoundAlert(
+                          pomodoroSettings.shortBreakSound,
+                          pomodoroSettings.customBreakSoundData
+                        )
+                      }
+                      className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Play className="w-3 h-3 text-sky-400" />
+                      <span>Test Sound</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {SOUND_ALERT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        id={`break-sound-${opt.id}`}
+                        onClick={() => {
+                          if (opt.id === 'custom') {
+                            fileInputBreakRef.current?.click();
+                          } else {
+                            onUpdatePomodoroSettings({ shortBreakSound: opt.id });
+                            triggerSoundAlert(opt.id);
+                          }
+                        }}
+                        className={`p-2 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                          pomodoroSettings.shortBreakSound === opt.id
+                            ? 'border-sky-400 bg-sky-500/10 text-white'
+                            : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="font-medium block truncate">{opt.name}</span>
+                        {opt.id === 'custom' && pomodoroSettings.customBreakSoundName && (
+                          <span className="text-[10px] text-sky-400 truncate block">
+                            {pomodoroSettings.customBreakSoundName}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="file"
+                    ref={fileInputBreakRef}
+                    onChange={(e) => handleAudioUpload(e, 'break')}
+                    accept="audio/*"
+                    className="hidden"
+                  />
+                </div>
+
+                {/* Phase 3: Long Break End Sound */}
+                <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-emerald-400 block">
+                        Long Break End Sound
+                      </span>
+                      <span className="text-[11px] text-neutral-500">
+                        Plays when long break is finished
+                      </span>
+                    </div>
+                    <button
+                      id="test-long-break-sound-btn"
+                      onClick={() =>
+                        triggerSoundAlert(
+                          pomodoroSettings.longBreakSound,
+                          pomodoroSettings.customLongBreakSoundData
+                        )
+                      }
+                      className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Play className="w-3 h-3 text-emerald-400" />
+                      <span>Test Sound</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {SOUND_ALERT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        id={`long-break-sound-${opt.id}`}
+                        onClick={() => {
+                          if (opt.id === 'custom') {
+                            fileInputLongBreakRef.current?.click();
+                          } else {
+                            onUpdatePomodoroSettings({ longBreakSound: opt.id });
+                            triggerSoundAlert(opt.id);
+                          }
+                        }}
+                        className={`p-2 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                          pomodoroSettings.longBreakSound === opt.id
+                            ? 'border-emerald-400 bg-emerald-500/10 text-white'
+                            : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="font-medium block truncate">{opt.name}</span>
+                        {opt.id === 'custom' && pomodoroSettings.customLongBreakSoundName && (
+                          <span className="text-[10px] text-emerald-400 truncate block">
+                            {pomodoroSettings.customLongBreakSoundName}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="file"
+                    ref={fileInputLongBreakRef}
+                    onChange={(e) => handleAudioUpload(e, 'longBreak')}
+                    accept="audio/*"
+                    className="hidden"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: AUDIO & PROFILE */}
+          {activeTab === 'general' && (
+            <div className="space-y-6">
+              {/* Profile Card */}
+              <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs text-neutral-400 block">Current User Name</span>
+                    <span className="text-sm font-semibold text-white">
+                      {userName || 'Anonymous'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  id="change-name-btn"
+                  onClick={() => {
+                    onClose();
+                    onOpenNameModal();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs font-medium text-neutral-200 cursor-pointer transition-colors"
+                >
+                  Change Name
+                </button>
+              </div>
+
+              {/* Ambient Sounds */}
+              <div className="space-y-3">
+                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Volume2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Clock Audio & Chimes</span>
+                </label>
+
+                {/* Hourly Chime */}
+                <label
+                  id="toggle-hourly-chime-label"
+                  className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                >
+                  <div>
+                    <span className="text-xs font-medium text-neutral-200 block">
+                      Hourly Desk Chime
+                    </span>
+                    <span className="text-[11px] text-neutral-500">
+                      Gentle bell tone on the hour (:00)
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="toggle-hourly-chime"
+                    checked={clockSettings.hourlyChime}
+                    onChange={(e) => onUpdateClockSettings({ hourlyChime: e.target.checked })}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                  />
+                </label>
+
+                {/* Tick Sound */}
+                <label
+                  id="toggle-tick-sound-label"
+                  className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                >
+                  <div>
+                    <span className="text-xs font-medium text-neutral-200 block">
+                      Mechanical Clock Tick
+                    </span>
+                    <span className="text-[11px] text-neutral-500">
+                      Subtle wooden click per second (focus sound)
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="toggle-tick-sound"
+                    checked={clockSettings.tickSound}
+                    onChange={(e) => onUpdateClockSettings({ tickSound: e.target.checked })}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                  />
+                </label>
+              </div>
+
+              {/* Display Care */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Display Care</span>
+                </label>
+                <label
+                  id="toggle-antiburnin-label"
+                  className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                >
+                  <div>
+                    <span className="text-xs font-medium text-neutral-200 block">
+                      Anti Burn-in Micro-drift
+                    </span>
+                    <span className="text-[11px] text-neutral-500">
+                      Shifts digits periodically to protect laptop screens
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="toggle-antiburnin"
+                    checked={clockSettings.antiBurnIn}
+                    onChange={(e) => onUpdateClockSettings({ antiBurnIn: e.target.checked })}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                  />
+                </label>
+              </div>
+
+              {/* Reset to defaults */}
+              <div className="pt-4 border-t border-neutral-800 flex justify-end">
+                <button
+                  id="reset-defaults-btn"
+                  onClick={() => {
+                    if (window.confirm('Reset all clock and pomodoro settings to defaults?')) {
+                      onResetDefaults();
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-rose-400 hover:bg-rose-500/10 text-xs font-medium transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset All Settings to Defaults</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3.5 border-t border-neutral-800 bg-neutral-900/95 flex justify-between items-center">
+          <span className="text-[11px] text-neutral-500">
+            Changes are saved automatically to your device
+          </span>
+          <button
+            id="settings-done-btn"
+            onClick={onClose}
+            className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-semibold tracking-wide transition-all cursor-pointer shadow-md"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

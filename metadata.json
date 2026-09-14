@@ -1,0 +1,6 @@
+{
+  "name": "Desk Clock & Pomodoro",
+  "description": "A customizable ambient desk clock and Pomodoro timer designed for desk and table setups.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

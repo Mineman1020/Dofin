@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        try {
+          var _rawFetch = window.fetch;
+          var _fetch = typeof _rawFetch === 'function' ? _rawFetch.bind(window) : _rawFetch;
+          function setupFetch(target) {
+            try {
+              Object.defineProperty(target, 'fetch', {
+                configurable: true,
+                enumerable: true,
+                get: function () {
+                  return _fetch;
+                },
+                set: function (val) {
+                  _fetch = val;
+                },
+              });
+              return true;
+            } catch (e) {
+              return false;
+            }
+          }
+          if (!setupFetch(window)) {
+            if (typeof Window !== 'undefined' && Window.prototype) {
+              setupFetch(Window.prototype);
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <title>Desk Clock & Pomodoro</title>
+    <meta name="description" content="A customizable ambient desk clock and Pomodoro timer designed for desk and table setups." />
+    <meta property="og:title" content="Desk Clock & Pomodoro" />
+    <meta property="og:description" content="A customizable ambient desk clock and Pomodoro timer designed for desk and table setups." />
+    
+    <!-- Google Web Fonts (13 distinct styles for clock customization) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Bebas+Neue&family=Cinzel:wght@500;700;900&family=Courier+Prime:wght@400;700&family=JetBrains+Mono:wght@300;400;500;700&family=Montserrat:wght@300;400;600;800&family=Orbitron:wght@400;600;800;900&family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@300;400;500;600;700&family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;700&family=VT323&display=swap" rel="stylesheet">
+  </head>
+  <body class="antialiased selection:bg-amber-500/20 selection:text-amber-900 dark:selection:text-amber-200">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
