@@ -1,0 +1,107 @@
+{
+  "entities": {
+    "party": {
+      "title": "Study & Work Party",
+      "description": "A collaborative room where members study or work together with shared Pomodoro timers and a focus leaderboard.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Memorable 6-8 character party code to join the room.",
+          "minLength": 4,
+          "maxLength": 12
+        },
+        "name": {
+          "type": "string",
+          "description": "Descriptive room name.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "description": "Room description, goals, or guidelines.",
+          "maxLength": 300
+        },
+        "purpose": {
+          "type": "string",
+          "description": "Reason the party was created.",
+          "enum": ["study", "work", "coding", "reading", "creative", "general"]
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "Unique device or user identifier who created the party."
+        },
+        "createdByName": {
+          "type": "string",
+          "description": "Display name of the party creator.",
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the party was created."
+        },
+        "memberCount": {
+          "type": "number",
+          "description": "Count of members currently in the party."
+        }
+      },
+      "required": ["code", "name", "purpose", "createdBy", "createdByName", "createdAt"]
+    },
+    "member": {
+      "title": "Party Member",
+      "description": "A participant in a party tracking their Pomodoro focus minutes and real-time status.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique participant identifier."
+        },
+        "name": {
+          "type": "string",
+          "description": "Participant display name.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "avatarColor": {
+          "type": "string",
+          "description": "Hex or theme color for the avatar badge."
+        },
+        "totalFocusMinutes": {
+          "type": "number",
+          "description": "Cumulative Pomodoro focus minutes logged in this party."
+        },
+        "completedSessions": {
+          "type": "number",
+          "description": "Number of completed focus pomodoro intervals."
+        },
+        "currentStatus": {
+          "type": "string",
+          "description": "Real-time focus status of the member.",
+          "enum": ["focusing", "break", "idle"]
+        },
+        "lastActiveAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of most recent activity or focus heartbeat."
+        },
+        "joinedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the member joined this party."
+        }
+      },
+      "required": ["userId", "name", "totalFocusMinutes", "completedSessions", "currentStatus", "lastActiveAt", "joinedAt"]
+    }
+  },
+  "firestore": {
+    "/parties/{partyId}": {
+      "schema": "party",
+      "description": "Top-level collection storing study & work parties accessible by code."
+    },
+    "/parties/{partyId}/members/{memberId}": {
+      "schema": "member",
+      "description": "Subcollection storing members and live leaderboard stats for a party."
+    }
+  }
+}

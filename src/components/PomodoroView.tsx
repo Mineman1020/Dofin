@@ -24,8 +24,10 @@ import {
   Moon,
   Check,
   X,
+  Users,
+  Trophy,
 } from 'lucide-react';
-import { PomodoroSettings, PomodoroPhase, ClockSettings, PomodoroTask } from '../types';
+import { PomodoroSettings, PomodoroPhase, ClockSettings, PomodoroTask, Party } from '../types';
 import { triggerSoundAlert, playPomodoroStart, playTickSound } from '../utils/audio';
 import {
   FONT_OPTIONS,
@@ -33,6 +35,13 @@ import {
   POMODORO_THEME_PRESETS,
   getMaxPomodoroFontSize,
 } from '../utils/constants';
+import {
+  getSavedPartyIds,
+  getActivePartyId,
+  syncFocusTimeToParties,
+  updatePartyMemberStatus,
+  subscribeToParty,
+} from '../utils/partyService';
 
 interface PomodoroViewProps {
   settings: PomodoroSettings;
@@ -40,6 +49,7 @@ interface PomodoroViewProps {
   onOpenSettings: () => void;
   onGoToClock: () => void;
   onGoToWelcome: () => void;
+  onOpenParties?: (tab?: 'leaderboard' | 'my-parties' | 'create' | 'join') => void;
   userName: string;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
@@ -53,6 +63,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   onOpenSettings,
   onGoToClock,
   onGoToWelcome,
+  onOpenParties,
   userName,
   isDarkMode,
   onToggleDarkMode,
@@ -97,6 +108,36 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   const [hoveredTask, setHoveredTask] = useState<PomodoroTask | null>(null);
   const [displayTask, setDisplayTask] = useState<PomodoroTask | null>(null);
   const [isIdle, setIsIdle] = useState<boolean>(false);
+
+  // Active Party state for header badge & live sync
+  const [activeParty, setActiveParty] = useState<Party | null>(null);
+  const activePartyId = getActivePartyId();
+  const secondsFocusedInMinuteRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!activePartyId) {
+      setActiveParty(null);
+      return;
+    }
+    const unsub = subscribeToParty(activePartyId, (p) => {
+      setActiveParty(p);
+    });
+    return () => unsub();
+  }, [activePartyId]);
+
+  // Sync Member Status (focusing, break, idle) to party leaderboards
+  useEffect(() => {
+    const partyIds = getSavedPartyIds();
+    if (partyIds.length === 0) return;
+
+    const status = !isRunning
+      ? 'idle'
+      : phase === 'work'
+      ? 'focusing'
+      : 'break';
+
+    updatePartyMemberStatus(partyIds, status);
+  }, [isRunning, phase]);
 
   // Smoothly keep display task for soft exit transitions
   useEffect(() => {
@@ -228,6 +269,17 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
 
     if (isRunning && timeLeft > 0) {
       interval = window.setInterval(() => {
+        if (phase === 'work') {
+          secondsFocusedInMinuteRef.current += 1;
+          if (secondsFocusedInMinuteRef.current >= 60) {
+            secondsFocusedInMinuteRef.current = 0;
+            const partyIds = getSavedPartyIds();
+            if (partyIds.length > 0) {
+              syncFocusTimeToParties(partyIds, 1, false, 'focusing');
+            }
+          }
+        }
+
         setTimeLeft((prev) => {
           if (settings.tickSound) {
             playTickSound();
@@ -242,6 +294,12 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       if (phase === 'work') {
         const nextCompleted = completedRounds + 1;
         setCompletedRounds(nextCompleted);
+
+        // Credit completed session to party leaderboard
+        const partyIds = getSavedPartyIds();
+        if (partyIds.length > 0) {
+          syncFocusTimeToParties(partyIds, 0, true, 'break');
+        }
 
         // Increment active task completed pomodoros
         if (activeTaskId) {
@@ -655,6 +713,27 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                 <Clock className="w-3.5 h-3.5 text-amber-500" />
                 <span className="hidden sm:inline">Desk Clock</span>
               </button>
+
+              {/* Study & Work Party Leaderboard Button */}
+              {onOpenParties && (
+                <button
+                  id="pomo-parties-btn"
+                  onClick={() => onOpenParties(activeParty ? 'leaderboard' : 'my-parties')}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                    activeParty
+                      ? 'border-amber-400/50 bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
+                      : resolvedTheme.isDark
+                      ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
+                      : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
+                  }`}
+                  title={activeParty ? `Party ${activeParty.name} (${activeParty.code}) - Open Leaderboard` : 'Open Parties & Leaderboard'}
+                >
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">
+                    {activeParty ? `Party ${activeParty.code}` : 'Parties'}
+                  </span>
+                </button>
+              )}
 
               {/* Fullscreen */}
               <button

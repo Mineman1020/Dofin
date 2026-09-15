@@ -9,6 +9,7 @@ import { ClockView } from './components/ClockView';
 import { PomodoroView } from './components/PomodoroView';
 import { SettingsModal } from './components/SettingsModal';
 import { NameModal } from './components/NameModal';
+import { PartyModal } from './components/PartyModal';
 
 const STORAGE_KEYS = {
   USER_NAME: 'desk_clock_user_name',
@@ -53,6 +54,19 @@ export default function App() {
 
   // Settings modal visibility
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+
+  // Study & Work Party Modal visibility and tab
+  const [isPartyModalOpen, setIsPartyModalOpen] = useState<boolean>(false);
+  const [partyModalTab, setPartyModalTab] = useState<
+    'leaderboard' | 'my-parties' | 'create' | 'join'
+  >('my-parties');
+
+  const handleOpenParties = (
+    tab: 'leaderboard' | 'my-parties' | 'create' | 'join' = 'my-parties'
+  ) => {
+    setPartyModalTab(tab);
+    setIsPartyModalOpen(true);
+  };
 
   // Clock settings with local persistence
   const [clockSettings, setClockSettings] = useState<ClockSettings>(() => {
@@ -158,7 +172,9 @@ export default function App() {
       }
 
       if (e.key === 'Escape') {
-        if (isSettingsOpen) {
+        if (isPartyModalOpen) {
+          setIsPartyModalOpen(false);
+        } else if (isSettingsOpen) {
           setIsSettingsOpen(false);
         } else if (isNameModalOpen && userName) {
           setIsNameModalOpen(false);
@@ -167,6 +183,8 @@ export default function App() {
         }
       } else if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
         setIsSettingsOpen((prev) => !prev);
+      } else if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey) {
+        setIsPartyModalOpen((prev) => !prev);
       } else if (e.key.toLowerCase() === 'd' && !e.ctrlKey && !e.metaKey) {
         handleToggleDarkMode();
       }
@@ -174,7 +192,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen, isNameModalOpen, userName, currentView]);
+  }, [isPartyModalOpen, isSettingsOpen, isNameModalOpen, userName, currentView]);
 
   return (
     <div
@@ -189,6 +207,7 @@ export default function App() {
           userName={userName || 'Friend'}
           onSelectMode={(mode) => setCurrentView(mode)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenParties={handleOpenParties}
           onOpenNameModal={() => setIsNameModalOpen(true)}
           clockSettings={clockSettings}
           pomodoroSettings={pomodoroSettings}
@@ -201,7 +220,9 @@ export default function App() {
       {currentView === 'clock' && (
         <ClockView
           settings={clockSettings}
+          onUpdateSettings={handleUpdateClockSettings}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenParties={() => handleOpenParties('my-parties')}
           onGoToWelcome={() => setCurrentView('welcome')}
           onGoToPomodoro={() => setCurrentView('pomodoro')}
           userName={userName || 'Friend'}
@@ -216,6 +237,7 @@ export default function App() {
           settings={pomodoroSettings}
           clockSettings={clockSettings}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenParties={handleOpenParties}
           onGoToClock={() => setCurrentView('clock')}
           onGoToWelcome={() => setCurrentView('welcome')}
           userName={userName || 'Friend'}
@@ -237,6 +259,19 @@ export default function App() {
         onResetDefaults={handleResetDefaults}
         isDarkMode={isDarkMode}
         onToggleDarkMode={handleToggleDarkMode}
+      />
+
+      {/* Study & Work Party & Leaderboard Modal */}
+      <PartyModal
+        isOpen={isPartyModalOpen}
+        onClose={() => setIsPartyModalOpen(false)}
+        userName={userName || 'Focus Pioneer'}
+        initialTab={partyModalTab}
+        onUpdateUserName={handleSaveName}
+        onStartPomodoro={() => {
+          setIsPartyModalOpen(false);
+          setCurrentView('pomodoro');
+        }}
       />
 
       {/* Name Input First-Run / Update Modal */}

@@ -9,6 +9,11 @@ import {
   ArrowRight,
   User,
   Calendar,
+  Users,
+  Trophy,
+  Plus,
+  LogIn,
+  Sparkles,
 } from 'lucide-react';
 import { ClockSettings, PomodoroSettings } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS } from '../utils/constants';
@@ -18,6 +23,7 @@ interface WelcomeScreenProps {
   onSelectMode: (mode: 'clock' | 'pomodoro') => void;
   onOpenSettings: () => void;
   onOpenNameModal: () => void;
+  onOpenParties?: (tab?: 'leaderboard' | 'my-parties' | 'create' | 'join') => void;
   clockSettings: ClockSettings;
   pomodoroSettings: PomodoroSettings;
   isDarkMode: boolean;
@@ -29,6 +35,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onSelectMode,
   onOpenSettings,
   onOpenNameModal,
+  onOpenParties,
   clockSettings,
   pomodoroSettings,
   isDarkMode,
@@ -142,6 +149,23 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               </>
             )}
           </button>
+
+          {/* Study & Work Parties Button in Navbar */}
+          {onOpenParties && (
+            <button
+              id="welcome-parties-btn"
+              onClick={() => onOpenParties('my-parties')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-sm ${
+                isDarkMode
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                  : 'border-amber-500/40 bg-amber-50 text-amber-800 hover:bg-amber-100'
+              }`}
+              title="Open Study & Work Parties and Leaderboard"
+            >
+              <Users className="w-3.5 h-3.5 text-amber-500" />
+              <span>Parties</span>
+            </button>
+          )}
 
           {/* User profile pill */}
           <button
@@ -352,6 +376,128 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Study & Work Party Hub Section */}
+        {onOpenParties && (
+          <div
+            id="welcome-party-hub-section"
+            className="w-full max-w-6xl mx-auto mt-8 sm:mt-10"
+          >
+            <div
+              className={`rounded-3xl p-6 sm:p-8 border transition-all ${
+                isDarkMode
+                  ? 'bg-neutral-900/60 border-neutral-800'
+                  : 'bg-white/90 border-neutral-200 shadow-sm'
+              }`}
+            >
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-neutral-200/70 dark:border-neutral-800">
+                <div className="flex items-start sm:items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-500 flex items-center justify-center flex-shrink-0">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg sm:text-xl font-bold">Study & Work Parties</h3>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 flex items-center gap-1 font-semibold">
+                        <Trophy className="w-3 h-3" />
+                        Live Leaderboard
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+                      Create or join a focus room with friends using a shared party code. Compete on the Pomodoro focus leaderboard!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Direct 'Your Parties' Action */}
+                <button
+                  id="welcome-your-parties-btn"
+                  onClick={() => onOpenParties('my-parties')}
+                  className={`px-4 py-2.5 rounded-2xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 ${
+                    isDarkMode
+                      ? 'border-neutral-700 bg-neutral-800/90 hover:bg-neutral-700 text-neutral-100'
+                      : 'border-neutral-300 bg-neutral-100 hover:bg-neutral-200 text-neutral-900'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-amber-500" />
+                  <span>Your Parties</span>
+                  <ArrowRight className="w-3.5 h-3.5 opacity-60" />
+                </button>
+              </div>
+
+              {/* The Two Party Choices: 1. Create Party, 2. Join Party */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                {/* Choice 1: Create Party */}
+                <div
+                  id="welcome-create-party-card"
+                  onClick={() => onOpenParties('create')}
+                  className={`group p-5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                    isDarkMode
+                      ? 'bg-neutral-950/60 hover:bg-neutral-950 border-neutral-800 hover:border-amber-500/50'
+                      : 'bg-neutral-50/80 hover:bg-white border-neutral-200 hover:border-amber-500/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center border border-amber-500/30 group-hover:scale-105 transition-transform">
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-500">
+                          Choice 1
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-bold group-hover:text-amber-500 transition-colors">
+                        Create Party
+                      </h4>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-1">
+                        Name party, purpose (study/work), & get party code
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="w-8 h-8 rounded-full border border-neutral-300 dark:border-neutral-700 flex items-center justify-center text-neutral-400 group-hover:text-amber-500 group-hover:border-amber-500 transition-colors flex-shrink-0">
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
+                </div>
+
+                {/* Choice 2: Join Party */}
+                <div
+                  id="welcome-join-party-card"
+                  onClick={() => onOpenParties('join')}
+                  className={`group p-5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                    isDarkMode
+                      ? 'bg-neutral-950/60 hover:bg-neutral-950 border-neutral-800 hover:border-sky-500/50'
+                      : 'bg-neutral-50/80 hover:bg-white border-neutral-200 hover:border-sky-500/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-500 flex items-center justify-center border border-sky-500/30 group-hover:scale-105 transition-transform">
+                      <LogIn className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-sky-500">
+                          Choice 2
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-bold group-hover:text-sky-500 transition-colors">
+                        Join Party
+                      </h4>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-1">
+                        Enter code to study with peers in the same room
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="w-8 h-8 rounded-full border border-neutral-300 dark:border-neutral-700 flex items-center justify-center text-neutral-400 group-hover:text-sky-500 group-hover:border-sky-500 transition-colors flex-shrink-0">
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

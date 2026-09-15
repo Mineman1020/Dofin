@@ -1,0 +1,43 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidParty(data) {
+      return data.code is string && data.code.size() >= 4 && data.code.size() <= 12
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+        && data.purpose in ['study', 'work', 'coding', 'reading', 'creative', 'general']
+        && data.createdBy is string
+        && data.createdByName is string;
+    }
+
+    function isValidMember(data) {
+      return data.userId is string
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 40
+        && data.totalFocusMinutes is number && data.totalFocusMinutes >= 0
+        && data.completedSessions is number && data.completedSessions >= 0
+        && data.currentStatus in ['focusing', 'break', 'idle'];
+    }
+
+    // Party collection
+    match /parties/{partyId} {
+      allow read: if true;
+      allow create: if isValidParty(request.resource.data);
+      allow update: if isValidParty(request.resource.data) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount']);
+      allow delete: if resource.data.createdBy == request.resource.data.createdBy;
+
+      // Party Members subcollection for leaderboard & live status
+      match /members/{memberId} {
+        allow read: if true;
+        allow create, update: if isValidMember(request.resource.data);
+        allow delete: if true;
+      }
+    }
+
+    // Connection test document
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

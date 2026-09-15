@@ -17,6 +17,41 @@ export type ClockFontFamily =
 
 export type ClockDigitSize = 'medium' | 'large' | 'huge' | 'fill';
 
+export type AmbientThemeId =
+  | 'none'
+  | 'aurora'
+  | 'starlight'
+  | 'rainy-window'
+  | 'campfire'
+  | 'cyber-horizon'
+  | 'zen-mist'
+  | 'golden-hour'
+  | 'retro-crt'
+  | 'sunbeam'
+  | 'deep-abyss';
+
+export type AmbientSoundType =
+  | 'none'
+  | 'rain'
+  | 'campfire'
+  | 'cosmic-drone'
+  | 'zen-stream';
+
+export interface AmbientThemePreset {
+  id: AmbientThemeId;
+  name: string;
+  tagline: string;
+  bgGradient: string;
+  textColor: string;
+  accentColor: string;
+  secondaryColor: string;
+  glowColor: string;
+  recommendedFont: ClockFontFamily;
+  isDark: boolean;
+  soundType: AmbientSoundType;
+  soundLabel: string;
+}
+
 export interface ThemePreset {
   id: string;
   name: string;
@@ -47,6 +82,11 @@ export interface ClockSettings {
   hourlyChime: boolean;
   brightness: number; // 20 to 100
   antiBurnIn: boolean;
+  // Ambient Immersive Modes
+  ambientTheme?: AmbientThemeId;
+  ambientSoundEnabled?: boolean;
+  ambientSoundVolume?: number; // 0 to 100
+  ambientParticles?: boolean;
 }
 
 export type SoundAlertChoice =
@@ -114,4 +154,32 @@ export interface PomodoroTask {
   isCompleted: boolean;
   createdAt: number;
   completedAt?: number;
+}
+
+export type PartyPurpose = 'study' | 'work' | 'coding' | 'reading' | 'creative' | 'general';
+
+export type MemberStatus = 'focusing' | 'break' | 'idle';
+
+export interface PartyMember {
+  id: string;
+  userId: string;
+  name: string;
+  avatarColor: string;
+  totalFocusMinutes: number;
+  completedSessions: number;
+  currentStatus: MemberStatus;
+  lastActiveAt: string;
+  joinedAt: string;
+}
+
+export interface Party {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  purpose: PartyPurpose;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  memberCount: number;
 }

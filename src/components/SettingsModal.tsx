@@ -19,6 +19,9 @@ import {
   User,
   Music2,
   Circle,
+  Headphones,
+  Flame,
+  CloudRain,
 } from 'lucide-react';
 import {
   ClockSettings,
@@ -26,6 +29,7 @@ import {
   ClockFontFamily,
   ClockDigitSize,
   SoundAlertChoice,
+  AmbientThemeId,
 } from '../types';
 import {
   THEME_PRESETS,
@@ -33,6 +37,7 @@ import {
   SOUND_ALERT_OPTIONS,
   SAMPLE_QUOTES,
   POMODORO_THEME_PRESETS,
+  AMBIENT_THEMES,
   getResolvedPomodoroTheme,
   getMaxPomodoroFontSize,
 } from '../utils/constants';
@@ -41,6 +46,7 @@ import {
   playHourlyChime,
   playTickSound,
 } from '../utils/audio';
+import { AmbientBackground } from './AmbientBackground';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -136,26 +142,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // Resolve custom colors
-  const activeBg =
-    clockSettings.themeId === 'custom' && clockSettings.customBg
-      ? clockSettings.customBg
-      : currentTheme.bgClass.includes('bg-[')
-      ? currentTheme.bgClass.replace('bg-[', '').replace(']', '')
-      : currentTheme.id === 'oled-black'
-      ? '#000000'
-      : currentTheme.isDark
-      ? '#0f111a'
-      : '#f7f5f0';
+  const activeAmbientTheme =
+    AMBIENT_THEMES.find((a) => a.id === (clockSettings.ambientTheme || 'none')) || AMBIENT_THEMES[0];
+  const isAmbientActive = activeAmbientTheme && activeAmbientTheme.id !== 'none';
 
-  const activeTextColor =
-    clockSettings.themeId === 'custom' && clockSettings.customTextColor
-      ? clockSettings.customTextColor
-      : currentTheme.textColor;
+  const activeBg = isAmbientActive
+    ? activeAmbientTheme.bgGradient
+    : clockSettings.themeId === 'custom' && clockSettings.customBg
+    ? clockSettings.customBg
+    : currentTheme.bgClass.includes('bg-[')
+    ? currentTheme.bgClass.replace('bg-[', '').replace(']', '')
+    : currentTheme.id === 'oled-black'
+    ? '#000000'
+    : currentTheme.isDark
+    ? '#0f111a'
+    : '#f7f5f0';
 
-  const activeAccentColor =
-    clockSettings.themeId === 'custom' && clockSettings.customAccentColor
-      ? clockSettings.customAccentColor
-      : currentTheme.accentColor;
+  const activeTextColor = isAmbientActive
+    ? activeAmbientTheme.textColor
+    : clockSettings.themeId === 'custom' && clockSettings.customTextColor
+    ? clockSettings.customTextColor
+    : currentTheme.textColor;
+
+  const activeAccentColor = isAmbientActive
+    ? activeAmbientTheme.accentColor
+    : clockSettings.themeId === 'custom' && clockSettings.customAccentColor
+    ? clockSettings.customAccentColor
+    : currentTheme.accentColor;
 
   // Handle custom audio file uploads
   const handleAudioUpload = (
@@ -303,7 +316,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </span>
             <span className="text-[10px] text-neutral-400 font-mono">
               {activeTab === 'clock'
-                ? `Theme: ${currentTheme.name} • Font: ${selectedFont.name}`
+                ? isAmbientActive
+                  ? `Ambient: ${activeAmbientTheme.name} • Font: ${selectedFont.name}`
+                  : `Theme: ${currentTheme.name} • Font: ${selectedFont.name}`
                 : activeTab === 'pomodoro'
                 ? `Theme: ${POMODORO_THEME_PRESETS.find((p) => p.id === (pomodoroSettings.themeId || 'classic-tomato'))?.name || 'Custom'} • Font: ${selectedPomoFont.name}`
                 : `Profile: ${userName || 'Friend'}`}
@@ -312,15 +327,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <div
             id="settings-live-preview-box"
-            className="w-full rounded-2xl p-4 transition-all duration-300 border border-neutral-700/80 shadow-inner flex flex-col items-center justify-center text-center overflow-hidden min-h-[110px]"
+            className="w-full rounded-2xl p-4 transition-all duration-300 border border-neutral-700/80 shadow-inner flex flex-col items-center justify-center text-center overflow-hidden min-h-[110px] relative"
             style={{
-              backgroundColor: activeTab === 'pomodoro' ? resolvedPomoTheme.bg : activeBg,
+              backgroundColor: activeTab === 'pomodoro' ? resolvedPomoTheme.bg : isAmbientActive ? undefined : activeBg,
+              background: activeTab === 'clock' && isAmbientActive ? activeAmbientTheme.bgGradient : undefined,
               color: activeTab === 'pomodoro' ? resolvedPomoTheme.textColor : activeTextColor,
               filter: activeTab === 'clock' ? `brightness(${clockSettings.brightness}%)` : 'none',
             }}
           >
+            {/* Ambient Background layer in preview */}
+            {activeTab === 'clock' && isAmbientActive && (
+              <AmbientBackground
+                ambientTheme={clockSettings.ambientTheme}
+                particles={clockSettings.ambientParticles !== false}
+                className="rounded-2xl"
+              />
+            )}
+
             {activeTab === 'clock' ? (
-              <>
+              <div className="relative z-10">
                 {(clockSettings.showDayOfWeek || clockSettings.showDate) && (
                   <div className="text-[11px] tracking-wider uppercase opacity-75 mb-1 font-sans">
                     {clockSettings.showDayOfWeek && <span>Thursday </span>}
@@ -330,7 +355,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
                 <div
                   className="text-3xl sm:text-4xl font-semibold tracking-wider flex items-baseline justify-center"
-                  style={{ fontFamily: selectedFont.cssFamily }}
+                  style={{
+                    fontFamily: selectedFont.cssFamily,
+                    textShadow: isAmbientActive ? `0 0 20px ${activeAmbientTheme.glowColor}` : 'none',
+                  }}
                 >
                   <span>10:45</span>
                   {clockSettings.showSeconds && (
@@ -352,7 +380,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     &ldquo;{clockSettings.quoteText}&rdquo;
                   </div>
                 )}
-              </>
+              </div>
             ) : activeTab === 'pomodoro' ? (
               <div className="w-full flex flex-col items-center gap-3">
                 {/* Interactive Phase Preview Switcher */}
@@ -528,12 +556,188 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 1: CLOCK & APPEARANCE */}
           {activeTab === 'clock' && (
             <div className="space-y-6">
+              {/* AMBIENT THEMES SECTION */}
+              <div className="space-y-3 p-4 rounded-2xl bg-neutral-950/80 border border-amber-500/20 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                    <span>Ambient Themes (Immersive Desk Atmospheres)</span>
+                  </label>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30">
+                    {AMBIENT_THEMES.length - 1} Environments
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-400">
+                  Transform your desk clock into a living visual atmosphere with procedural audio soundscapes, drifting particles, and ambient glow.
+                </p>
+
+                {/* Ambient Themes Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+                  {AMBIENT_THEMES.map((ambient) => {
+                    const isSelected = (clockSettings.ambientTheme || 'none') === ambient.id;
+                    return (
+                      <button
+                        key={ambient.id}
+                        id={`ambient-theme-card-${ambient.id}`}
+                        onClick={() => {
+                          onUpdateClockSettings({
+                            ambientTheme: ambient.id,
+                            ...(ambient.soundType && ambient.soundType !== 'none'
+                              ? { ambientSoundEnabled: clockSettings.ambientSoundEnabled }
+                              : {}),
+                          });
+                        }}
+                        className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between min-h-[90px] cursor-pointer group ${
+                          isSelected
+                            ? 'border-amber-400 bg-amber-400/10 ring-2 ring-amber-400/20 shadow-md'
+                            : 'border-neutral-800 hover:border-neutral-700 bg-neutral-900/60'
+                        }`}
+                      >
+                        {/* Top row: visual preview swatch + check */}
+                        <div className="flex items-center justify-between w-full mb-2">
+                          <div
+                            className="w-7 h-7 rounded-lg border border-neutral-700 relative overflow-hidden shadow-inner flex-shrink-0"
+                            style={{
+                              background: ambient.id === 'none' ? '#171717' : ambient.bgGradient,
+                            }}
+                          >
+                            <span
+                              className="absolute inset-0 m-auto w-2.5 h-2.5 rounded-full"
+                              style={{ backgroundColor: ambient.accentColor }}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {ambient.soundType && ambient.soundType !== 'none' && (
+                              <span
+                                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 flex items-center gap-1"
+                                title={`Includes procedural audio: ${ambient.soundLabel}`}
+                              >
+                                <Headphones className="w-2.5 h-2.5" />
+                                <span className="hidden sm:inline">Audio</span>
+                              </span>
+                            )}
+                            {isSelected && (
+                              <span className="w-4 h-4 rounded-full bg-amber-400 text-neutral-950 flex items-center justify-center flex-shrink-0">
+                                <Check className="w-2.5 h-2.5 stroke-[3]" />
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Title and description */}
+                        <div>
+                          <span className="text-xs font-semibold text-neutral-100 block group-hover:text-amber-300 transition-colors">
+                            {ambient.name}
+                          </span>
+                          <span className="text-[11px] text-neutral-400 line-clamp-1 block mt-0.5">
+                            {ambient.tagline}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Ambient Sound & Particle Options */}
+                {isAmbientActive && (
+                  <div className="mt-3 pt-3 border-t border-neutral-800/80 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Audio soundscape toggle & volume */}
+                    {activeAmbientTheme.soundType && activeAmbientTheme.soundType !== 'none' ? (
+                      <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-neutral-200 flex items-center gap-1.5">
+                            <Headphones className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Ambient Soundscape</span>
+                          </span>
+                          <button
+                            type="button"
+                            id="ambient-sound-toggle-btn"
+                            onClick={() =>
+                              onUpdateClockSettings({
+                                ambientSoundEnabled: !clockSettings.ambientSoundEnabled,
+                              })
+                            }
+                            className={`text-[10px] px-2 py-0.5 rounded font-mono uppercase cursor-pointer ${
+                              clockSettings.ambientSoundEnabled
+                                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 font-semibold'
+                                : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
+                            }`}
+                          >
+                            {clockSettings.ambientSoundEnabled ? 'Active' : 'Muted'}
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                          <span>{activeAmbientTheme.soundLabel}</span>
+                          <span className="font-mono">{clockSettings.ambientSoundVolume ?? 35}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="5"
+                          max="100"
+                          value={clockSettings.ambientSoundVolume ?? 35}
+                          onChange={(e) =>
+                            onUpdateClockSettings({
+                              ambientSoundVolume: Number(e.target.value),
+                              ambientSoundEnabled: true,
+                            })
+                          }
+                          className="w-full accent-sky-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center text-xs text-neutral-400">
+                        <span>This atmosphere is visually ambient without background noise.</span>
+                      </div>
+                    )}
+
+                    {/* Particle motion toggle */}
+                    <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex flex-col justify-between">
+                      <div>
+                        <span className="text-xs font-medium text-neutral-200 block">
+                          Visual Particles & Atmosphere
+                        </span>
+                        <span className="text-[11px] text-neutral-400 block mt-0.5">
+                          Render animated background embers, stars, and rain
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-800">
+                        <span className="text-xs text-neutral-400">Floating Particles</span>
+                        <button
+                          type="button"
+                          id="ambient-particles-toggle"
+                          onClick={() =>
+                            onUpdateClockSettings({
+                              ambientParticles: clockSettings.ambientParticles === false ? true : false,
+                            })
+                          }
+                          className={`text-[10px] px-2.5 py-1 rounded font-mono uppercase cursor-pointer ${
+                            clockSettings.ambientParticles !== false
+                              ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
+                              : 'bg-neutral-800 text-neutral-400'
+                          }`}
+                        >
+                          {clockSettings.ambientParticles !== false ? 'Enabled' : 'Disabled'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Theme Presets */}
               <div className="space-y-3">
-                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <Palette className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Color Theme Presets</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Standard Color Theme Presets</span>
+                  </label>
+                  {isAmbientActive && (
+                    <span className="text-[10px] text-amber-400/90 font-mono">
+                      (Ambient theme active)
+                    </span>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {THEME_PRESETS.map((theme) => {
                     const isSelected = clockSettings.themeId === theme.id;
