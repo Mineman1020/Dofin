@@ -10,6 +10,7 @@ import { PomodoroView } from './components/PomodoroView';
 import { SettingsModal } from './components/SettingsModal';
 import { NameModal } from './components/NameModal';
 import { PartyModal } from './components/PartyModal';
+import { StartupReveal } from './components/StartupReveal';
 
 const STORAGE_KEYS = {
   USER_NAME: 'desk_clock_user_name',
@@ -51,6 +52,9 @@ export default function App() {
 
   // Active view: 'welcome' | 'clock' | 'pomodoro'
   const [currentView, setCurrentView] = useState<ViewMode>('welcome');
+
+  // Cinematic Startup Reveal
+  const [showStartupReveal, setShowStartupReveal] = useState<boolean>(true);
 
   // Settings modal visibility
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -236,6 +240,7 @@ export default function App() {
         <PomodoroView
           settings={pomodoroSettings}
           clockSettings={clockSettings}
+          onUpdateSettings={handleUpdatePomodoroSettings}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenParties={handleOpenParties}
           onGoToClock={() => setCurrentView('clock')}
@@ -257,6 +262,10 @@ export default function App() {
         userName={userName}
         onOpenNameModal={() => setIsNameModalOpen(true)}
         onResetDefaults={handleResetDefaults}
+        onReplayIntro={() => {
+          setIsSettingsOpen(false);
+          setShowStartupReveal(true);
+        }}
         isDarkMode={isDarkMode}
         onToggleDarkMode={handleToggleDarkMode}
       />
@@ -282,6 +291,15 @@ export default function App() {
         onClose={() => setIsNameModalOpen(false)}
         canDismiss={Boolean(userName)}
       />
+
+      {/* Cinematic Startup Reveal (Apple-style) */}
+      {showStartupReveal && (
+        <StartupReveal
+          userName={userName}
+          isDarkMode={isDarkMode}
+          onComplete={() => setShowStartupReveal(false)}
+        />
+      )}
     </div>
   );
 }

@@ -299,7 +299,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
           <button
             id="clock-back-welcome-btn"
             onClick={onGoToWelcome}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
+            className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
               isLight
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
                 : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
@@ -326,7 +326,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
                 setAmbientMenuOpen((prev) => !prev);
                 setSoundMenuOpen(false);
               }}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
+              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
                 isAmbientActive
                   ? 'border-amber-400/60 bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
                   : isLight
@@ -346,20 +346,33 @@ export const ClockView: React.FC<ClockViewProps> = ({
               <div
                 id="ambient-theme-popover"
                 onClick={(e) => e.stopPropagation()}
-                className="absolute right-0 mt-2 w-72 sm:w-80 rounded-2xl p-3 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 shadow-2xl z-50 text-neutral-200 animate-fadeIn"
+                className="absolute right-0 mt-2 w-80 sm:w-96 max-h-[82vh] overflow-y-auto rounded-2xl p-3 sm:p-4 bg-neutral-900/98 backdrop-blur-2xl border border-neutral-700/80 shadow-2xl z-50 text-neutral-200 animate-fadeIn"
               >
-                <div className="flex items-center justify-between px-2 pb-2 mb-2 border-b border-neutral-800">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-100">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Ambient Atmospheres</span>
+                <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-neutral-800">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-semibold text-neutral-100 uppercase tracking-wider">
+                      Atmospheres & Ambient Themes
+                    </span>
                   </div>
-                  <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-mono">
-                    {AMBIENT_THEMES.length - 1} Moods
-                  </span>
+                  <button
+                    onClick={() => {
+                      onUpdateSettings?.({ ambientTheme: 'none', ambientSoundEnabled: false });
+                      setAmbientMenuOpen(false);
+                    }}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
+                      settings.ambientTheme === 'none' || !settings.ambientTheme
+                        ? 'border-neutral-500 bg-neutral-800 text-white font-medium'
+                        : 'border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-neutral-200'
+                    }`}
+                  >
+                    Minimal Clean (Off)
+                  </button>
                 </div>
 
-                <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
-                  {AMBIENT_THEMES.map((theme) => {
+                {/* Ambient Themes List */}
+                <div className="space-y-1.5 max-h-[65vh] overflow-y-auto pr-1">
+                  {AMBIENT_THEMES.filter((t) => t.id !== 'none').map((theme) => {
                     const isSelected = (settings.ambientTheme || 'none') === theme.id;
                     return (
                       <button
@@ -374,19 +387,16 @@ export const ClockView: React.FC<ClockViewProps> = ({
                           });
                           setAmbientMenuOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all cursor-pointer ${
                           isSelected
-                            ? 'bg-amber-400/20 text-white border border-amber-400/40'
-                            : 'hover:bg-neutral-800/60 text-neutral-300'
+                            ? 'bg-amber-400/15 text-white border border-amber-400/40 shadow-sm'
+                            : 'hover:bg-neutral-800/70 text-neutral-300 border border-transparent'
                         }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          {/* Mini visual swatch indicator */}
                           <div
-                            className="w-5 h-5 rounded-lg border border-neutral-700 flex-shrink-0 relative overflow-hidden"
-                            style={{
-                              background: theme.id === 'none' ? '#111' : theme.bgGradient,
-                            }}
+                            className="w-7 h-7 rounded-lg border border-neutral-700 flex-shrink-0 relative overflow-hidden"
+                            style={{ background: theme.bgGradient }}
                           >
                             <span
                               className="absolute inset-0 m-auto w-2 h-2 rounded-full"
@@ -395,20 +405,20 @@ export const ClockView: React.FC<ClockViewProps> = ({
                           </div>
 
                           <div className="truncate">
-                            <div className="text-xs font-medium truncate flex items-center gap-1.5">
+                            <div className="text-xs font-semibold truncate flex items-center gap-1.5">
                               <span>{theme.name}</span>
                               {theme.soundType && theme.soundType !== 'none' && (
-                                <Headphones className="w-2.5 h-2.5 text-sky-400 opacity-80" />
+                                <Headphones className="w-3 h-3 text-sky-400 opacity-85 shrink-0" />
                               )}
                             </div>
-                            <div className="text-[10px] text-neutral-400 truncate">
+                            <div className="text-[11px] text-neutral-400 truncate mt-0.5">
                               {theme.tagline}
                             </div>
                           </div>
                         </div>
 
                         {isSelected && (
-                          <Check className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 ml-1.5" />
+                          <Check className="w-4 h-4 text-amber-400 flex-shrink-0 ml-2" />
                         )}
                       </button>
                     );
@@ -428,7 +438,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
                   setSoundMenuOpen((prev) => !prev);
                   setAmbientMenuOpen(false);
                 }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
                   settings.ambientSoundEnabled
                     ? 'border-sky-400/60 bg-sky-500/15 text-sky-300 ring-1 ring-sky-400/30'
                     : isLight
@@ -503,7 +513,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
           <button
             id="clock-dark-mode-btn"
             onClick={onToggleDarkMode}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
+            className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
               isLight
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
                 : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
@@ -527,7 +537,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
           <button
             id="clock-to-pomodoro-btn"
             onClick={onGoToPomodoro}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
+            className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
               isLight
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white'
                 : 'border-white/10 bg-white/5 hover:bg-white/10'
@@ -544,7 +554,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
             <button
               id="clock-parties-btn"
               onClick={onOpenParties}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
+              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
                 isLight
                   ? 'border-amber-400/50 bg-amber-50/80 hover:bg-amber-100 text-amber-800'
                   : 'border-amber-400/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300'
@@ -560,7 +570,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
           <button
             id="clock-fullscreen-btn"
             onClick={toggleFullscreen}
-            className={`p-2 rounded-xl text-xs backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
+            className={`apple-icon-hover p-2 rounded-xl text-xs backdrop-blur-md border cursor-pointer shadow-sm ${
               isLight
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
                 : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
@@ -574,7 +584,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
           <button
             id="clock-settings-btn"
             onClick={onOpenSettings}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
+            className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
               isLight
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
                 : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
@@ -622,7 +632,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
         {/* Hero Clock Digits - Horizontally & Vertically Centered */}
         <div
           id="clock-primary-time"
-          className={`relative inline-flex items-center justify-center text-center tracking-tight leading-none transition-all select-none mx-auto ${getDigitSizeStyle()}`}
+          className={`apple-display-hover relative inline-flex items-center justify-center text-center tracking-tight leading-none select-none mx-auto ${getDigitSizeStyle()}`}
           style={{
             fontFamily: selectedFont.cssFamily,
             textShadow: isAmbientActive

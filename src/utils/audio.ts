@@ -437,7 +437,105 @@ export function startAmbientSoundscape(
     master.connect(ctx.destination);
     ambientMasterGain = master;
 
-    if (soundType === 'rain') {
+    if (soundType === 'ocean-waves') {
+      // Procedural Beachside Surf & Rolling Ocean Waves
+      // 1. Brown noise base for deep ocean surf mass
+      const noiseBuffer = createNoiseBuffer(ctx, 'brown');
+      const surfNoise = ctx.createBufferSource();
+      surfNoise.buffer = noiseBuffer;
+      surfNoise.loop = true;
+
+      // Swell filter (sweeps from 180Hz to 850Hz as wave crests)
+      const swellFilter = ctx.createBiquadFilter();
+      swellFilter.type = 'lowpass';
+      swellFilter.frequency.setValueAtTime(220, ctx.currentTime);
+      swellFilter.Q.setValueAtTime(1.8, ctx.currentTime);
+
+      // Wave swell volume modulation
+      const swellGain = ctx.createGain();
+      swellGain.gain.setValueAtTime(0.2, ctx.currentTime);
+
+      // Low frequency oscillator (0.11 Hz = ~9.1s ocean swell cycle)
+      const swellLfo = ctx.createOscillator();
+      swellLfo.type = 'sine';
+      swellLfo.frequency.setValueAtTime(0.11, ctx.currentTime);
+
+      const lfoFilterGain = ctx.createGain();
+      lfoFilterGain.gain.setValueAtTime(380, ctx.currentTime); // Filter cutoff modulation depth
+
+      const lfoAmpGain = ctx.createGain();
+      lfoAmpGain.gain.setValueAtTime(0.45, ctx.currentTime); // Volume swell depth
+
+      swellLfo.connect(lfoFilterGain);
+      lfoFilterGain.connect(swellFilter.frequency);
+
+      swellLfo.connect(lfoAmpGain);
+      lfoAmpGain.connect(swellGain.gain);
+
+      surfNoise.connect(swellFilter);
+      swellFilter.connect(swellGain);
+      swellGain.connect(master);
+
+      // 2. Secondary soft sea-foam hiss (pink noise with high-pass filter)
+      const foamBuffer = createNoiseBuffer(ctx, 'pink');
+      const foamNoise = ctx.createBufferSource();
+      foamNoise.buffer = foamBuffer;
+      foamNoise.loop = true;
+
+      const foamFilter = ctx.createBiquadFilter();
+      foamFilter.type = 'bandpass';
+      foamFilter.frequency.setValueAtTime(1400, ctx.currentTime);
+      foamFilter.Q.setValueAtTime(0.8, ctx.currentTime);
+
+      const foamGain = ctx.createGain();
+      foamGain.gain.setValueAtTime(0.08, ctx.currentTime);
+
+      // Modulate foam slightly delayed after wave swell
+      const foamLfo = ctx.createOscillator();
+      foamLfo.type = 'sine';
+      foamLfo.frequency.setValueAtTime(0.11, ctx.currentTime);
+      const foamLfoGain = ctx.createGain();
+      foamLfoGain.gain.setValueAtTime(0.09, ctx.currentTime);
+
+      foamLfo.connect(foamLfoGain);
+      foamLfoGain.connect(foamGain.gain);
+
+      foamNoise.connect(foamFilter);
+      foamFilter.connect(foamGain);
+      foamGain.connect(master);
+
+      // 3. Sub-bass undertone for deep ocean water resonance (46Hz warm sine wave)
+      const subOsc = ctx.createOscillator();
+      subOsc.type = 'sine';
+      subOsc.frequency.setValueAtTime(46, ctx.currentTime);
+      const subGain = ctx.createGain();
+      subGain.gain.setValueAtTime(0.12, ctx.currentTime);
+
+      subOsc.connect(subGain);
+      subGain.connect(master);
+
+      surfNoise.start();
+      foamNoise.start();
+      swellLfo.start();
+      foamLfo.start();
+      subOsc.start();
+
+      ambientNodes.push(
+        surfNoise,
+        swellFilter,
+        swellGain,
+        swellLfo,
+        lfoFilterGain,
+        lfoAmpGain,
+        foamNoise,
+        foamFilter,
+        foamGain,
+        foamLfo,
+        foamLfoGain,
+        subOsc,
+        subGain
+      );
+    } else if (soundType === 'rain') {
       // 1. Pink noise with gentle low-pass filter
       const noiseBuffer = createNoiseBuffer(ctx, 'pink');
       const noiseSource = ctx.createBufferSource();

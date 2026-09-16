@@ -130,7 +130,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <button
             id="welcome-dark-mode-toggle"
             onClick={onToggleDarkMode}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer shadow-sm ${
+            className={`apple-hover flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium cursor-pointer shadow-sm ${
               isDarkMode
                 ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-200'
                 : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
@@ -155,7 +155,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <button
               id="welcome-parties-btn"
               onClick={() => onOpenParties('my-parties')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-sm ${
+              className={`apple-hover flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer shadow-sm ${
                 isDarkMode
                   ? 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
                   : 'border-amber-500/40 bg-amber-50 text-amber-800 hover:bg-amber-100'
@@ -171,7 +171,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <button
             id="welcome-user-profile-btn"
             onClick={onOpenNameModal}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition-all cursor-pointer shadow-sm ${
+            className={`apple-hover flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs cursor-pointer shadow-sm ${
               isDarkMode
                 ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
                 : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
@@ -187,7 +187,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <button
             id="welcome-settings-btn"
             onClick={onOpenSettings}
-            className={`p-2 rounded-xl border text-xs transition-colors cursor-pointer ${
+            className={`apple-icon-hover p-2 rounded-xl border text-xs cursor-pointer ${
               isDarkMode
                 ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-400 hover:text-white'
                 : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-700 hover:text-black'
@@ -234,7 +234,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <div
             id="welcome-clock-card"
             onClick={() => onSelectMode('clock')}
-            className={`group relative rounded-3xl p-8 sm:p-10 flex flex-col justify-between transition-all duration-300 cursor-pointer shadow-2xl hover:-translate-y-1.5 overflow-hidden border min-h-[440px] sm:min-h-[470px] ${
+            className={`apple-card-hover group relative rounded-3xl p-8 sm:p-10 flex flex-col justify-between cursor-pointer shadow-2xl overflow-hidden border min-h-[440px] sm:min-h-[470px] ${
               isDarkMode
                 ? 'bg-neutral-900/70 hover:bg-neutral-900/95 border-neutral-800 hover:border-amber-500/60 hover:shadow-amber-500/15'
                 : 'bg-white hover:bg-neutral-50/95 border-neutral-200/90 hover:border-amber-500/60 hover:shadow-amber-500/15'
@@ -244,7 +244,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
             <div>
               <div className="flex items-center justify-between mb-5">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-500 dark:text-amber-400 flex items-center justify-center transition-transform group-hover:scale-105">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-500 dark:text-amber-400 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
                   <Clock className="w-7 h-7 sm:w-8 sm:h-8" />
                 </div>
                 <span
@@ -302,7 +302,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <div
             id="welcome-pomodoro-card"
             onClick={() => onSelectMode('pomodoro')}
-            className={`group relative rounded-3xl p-8 sm:p-10 flex flex-col justify-between transition-all duration-300 cursor-pointer shadow-2xl hover:-translate-y-1.5 overflow-hidden border min-h-[440px] sm:min-h-[470px] ${
+            className={`apple-card-hover group relative rounded-3xl p-8 sm:p-10 flex flex-col justify-between cursor-pointer shadow-2xl overflow-hidden border min-h-[440px] sm:min-h-[470px] ${
               isDarkMode
                 ? 'bg-neutral-900/70 hover:bg-neutral-900/95 border-neutral-800 hover:border-sky-500/60 hover:shadow-sky-500/15'
                 : 'bg-white hover:bg-neutral-50/95 border-neutral-200/90 hover:border-sky-500/60 hover:shadow-sky-500/15'
@@ -312,7 +312,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
             <div>
               <div className="flex items-center justify-between mb-5">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-sky-500 dark:text-sky-400 flex items-center justify-center transition-transform group-hover:scale-105">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-sky-500 dark:text-sky-400 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
                   <Timer className="w-7 h-7 sm:w-8 sm:h-8" />
                 </div>
                 <span
@@ -413,7 +413,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 <button
                   id="welcome-your-parties-btn"
                   onClick={() => onOpenParties('my-parties')}
-                  className={`px-4 py-2.5 rounded-2xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 ${
+                  className={`apple-hover px-4 py-2.5 rounded-2xl border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-sm ${
                     isDarkMode
                       ? 'border-neutral-700 bg-neutral-800/90 hover:bg-neutral-700 text-neutral-100'
                       : 'border-neutral-300 bg-neutral-100 hover:bg-neutral-200 text-neutral-900'
@@ -431,14 +431,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 <div
                   id="welcome-create-party-card"
                   onClick={() => onOpenParties('create')}
-                  className={`group p-5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                  className={`apple-card-hover group p-5 rounded-2xl border cursor-pointer flex items-center justify-between gap-4 ${
                     isDarkMode
                       ? 'bg-neutral-950/60 hover:bg-neutral-950 border-neutral-800 hover:border-amber-500/50'
                       : 'bg-neutral-50/80 hover:bg-white border-neutral-200 hover:border-amber-500/50'
                   }`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center border border-amber-500/30 group-hover:scale-105 transition-transform">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center border border-amber-500/30 group-hover:scale-110 transition-transform duration-300">
                       <Plus className="w-5 h-5" />
                     </div>
                     <div>
@@ -465,14 +465,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 <div
                   id="welcome-join-party-card"
                   onClick={() => onOpenParties('join')}
-                  className={`group p-5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                  className={`apple-card-hover group p-5 rounded-2xl border cursor-pointer flex items-center justify-between gap-4 ${
                     isDarkMode
                       ? 'bg-neutral-950/60 hover:bg-neutral-950 border-neutral-800 hover:border-sky-500/50'
                       : 'bg-neutral-50/80 hover:bg-white border-neutral-200 hover:border-sky-500/50'
                   }`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-500 flex items-center justify-center border border-sky-500/30 group-hover:scale-105 transition-transform">
+                    <div className="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-500 flex items-center justify-center border border-sky-500/30 group-hover:scale-110 transition-transform duration-300">
                       <LogIn className="w-5 h-5" />
                     </div>
                     <div>

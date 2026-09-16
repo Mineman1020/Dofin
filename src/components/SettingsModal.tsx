@@ -58,6 +58,7 @@ interface SettingsModalProps {
   userName: string;
   onOpenNameModal: () => void;
   onResetDefaults: () => void;
+  onReplayIntro?: () => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
 }
@@ -74,6 +75,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   userName,
   onOpenNameModal,
   onResetDefaults,
+  onReplayIntro,
   isDarkMode,
   onToggleDarkMode,
 }) => {
@@ -145,6 +147,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const activeAmbientTheme =
     AMBIENT_THEMES.find((a) => a.id === (clockSettings.ambientTheme || 'none')) || AMBIENT_THEMES[0];
   const isAmbientActive = activeAmbientTheme && activeAmbientTheme.id !== 'none';
+
+  const activePomoAmbientTheme =
+    AMBIENT_THEMES.find((a) => a.id === (pomodoroSettings.ambientTheme || 'none')) || AMBIENT_THEMES[0];
+  const isPomoAmbientActive = activePomoAmbientTheme && activePomoAmbientTheme.id !== 'none';
 
   const activeBg = isAmbientActive
     ? activeAmbientTheme.bgGradient
@@ -557,28 +563,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeTab === 'clock' && (
             <div className="space-y-6">
               {/* AMBIENT THEMES SECTION */}
-              <div className="space-y-3 p-4 rounded-2xl bg-neutral-950/80 border border-amber-500/20 shadow-lg">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-                    <span>Ambient Themes (Immersive Desk Atmospheres)</span>
-                  </label>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30">
-                    {AMBIENT_THEMES.length - 1} Environments
-                  </span>
+              <div className="space-y-4 p-4 rounded-2xl bg-neutral-950/80 border border-amber-500/20 shadow-lg">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                      <span>Ambient Atmospheres & Moods</span>
+                    </label>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Transform your desk clock with living procedural atmospheres and calming soundscapes.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      id="ambient-theme-none-btn"
+                      onClick={() =>
+                        onUpdateClockSettings({
+                          ambientTheme: 'none',
+                          ambientSoundEnabled: false,
+                        })
+                      }
+                      className={`text-xs px-3 py-1.5 rounded-xl border transition-all cursor-pointer ${
+                        clockSettings.ambientTheme === 'none' || !clockSettings.ambientTheme
+                          ? 'border-neutral-500 bg-neutral-800 text-white font-semibold'
+                          : 'border-neutral-800 hover:border-neutral-700 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200'
+                      }`}
+                    >
+                      Minimal Clean (Off)
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs text-neutral-400">
-                  Transform your desk clock into a living visual atmosphere with procedural audio soundscapes, drifting particles, and ambient glow.
-                </p>
 
                 {/* Ambient Themes Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
-                  {AMBIENT_THEMES.map((ambient) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1 max-h-[380px] overflow-y-auto pr-1">
+                  {AMBIENT_THEMES.filter((t) => t.id !== 'none').map((ambient) => {
                     const isSelected = (clockSettings.ambientTheme || 'none') === ambient.id;
                     return (
                       <button
                         key={ambient.id}
                         id={`ambient-theme-card-${ambient.id}`}
+                        type="button"
                         onClick={() => {
                           onUpdateClockSettings({
                             ambientTheme: ambient.id,
@@ -589,20 +614,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         }}
                         className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between min-h-[90px] cursor-pointer group ${
                           isSelected
-                            ? 'border-amber-400 bg-amber-400/10 ring-2 ring-amber-400/20 shadow-md'
+                            ? 'border-sky-400 bg-sky-500/15 ring-2 ring-sky-400/30 shadow-md'
                             : 'border-neutral-800 hover:border-neutral-700 bg-neutral-900/60'
                         }`}
                       >
-                        {/* Top row: visual preview swatch + check */}
                         <div className="flex items-center justify-between w-full mb-2">
                           <div
                             className="w-7 h-7 rounded-lg border border-neutral-700 relative overflow-hidden shadow-inner flex-shrink-0"
-                            style={{
-                              background: ambient.id === 'none' ? '#171717' : ambient.bgGradient,
-                            }}
+                            style={{ background: ambient.bgGradient }}
                           >
                             <span
-                              className="absolute inset-0 m-auto w-2.5 h-2.5 rounded-full"
+                              className="absolute inset-0 m-auto w-2 h-2 rounded-full"
                               style={{ backgroundColor: ambient.accentColor }}
                             />
                           </div>
@@ -610,24 +632,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <div className="flex items-center gap-1.5">
                             {ambient.soundType && ambient.soundType !== 'none' && (
                               <span
-                                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 flex items-center gap-1"
-                                title={`Includes procedural audio: ${ambient.soundLabel}`}
+                                className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 flex items-center gap-0.5"
+                                title={`Includes audio: ${ambient.soundLabel}`}
                               >
                                 <Headphones className="w-2.5 h-2.5" />
-                                <span className="hidden sm:inline">Audio</span>
+                                <span>Audio</span>
                               </span>
                             )}
                             {isSelected && (
-                              <span className="w-4 h-4 rounded-full bg-amber-400 text-neutral-950 flex items-center justify-center flex-shrink-0">
+                              <span className="w-4 h-4 rounded-full bg-sky-400 text-neutral-950 flex items-center justify-center flex-shrink-0">
                                 <Check className="w-2.5 h-2.5 stroke-[3]" />
                               </span>
                             )}
                           </div>
                         </div>
 
-                        {/* Title and description */}
                         <div>
-                          <span className="text-xs font-semibold text-neutral-100 block group-hover:text-amber-300 transition-colors">
+                          <span className="text-xs font-semibold text-neutral-100 block group-hover:text-sky-300 transition-colors">
                             {ambient.name}
                           </span>
                           <span className="text-[11px] text-neutral-400 line-clamp-1 block mt-0.5">
@@ -1137,6 +1158,187 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 2: POMODORO & SOUND ALERTS */}
           {activeTab === 'pomodoro' && (
             <div className="space-y-6">
+              {/* SECTION 0: POMODORO AMBIENT THEMES & BACKGROUNDS */}
+              <div className="space-y-3 p-4 rounded-2xl bg-neutral-950/80 border border-amber-500/20 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                    <span>Pomodoro Ambient Themes & Backgrounds</span>
+                  </label>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30">
+                    {AMBIENT_THEMES.length - 1} Atmospheres
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                      <span>Pomodoro Focus Atmospheres & Themes</span>
+                    </label>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Surround your study sessions with dynamic ambient procedural themes and calming soundscapes.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    id="pomo-ambient-theme-none-btn"
+                    onClick={() =>
+                      onUpdatePomodoroSettings({
+                        ambientTheme: 'none',
+                        ambientSoundEnabled: false,
+                      })
+                    }
+                    className={`text-xs px-3 py-1.5 rounded-xl border transition-all cursor-pointer self-start sm:self-auto ${
+                      pomodoroSettings.ambientTheme === 'none' || !pomodoroSettings.ambientTheme
+                        ? 'border-neutral-500 bg-neutral-800 text-white font-semibold'
+                        : 'border-neutral-800 hover:border-neutral-700 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200'
+                    }`}
+                  >
+                    Minimal Clean (Off)
+                  </button>
+                </div>
+
+                {/* Ambient Themes Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1 max-h-[380px] overflow-y-auto pr-1">
+                  {AMBIENT_THEMES.filter((t) => t.id !== 'none').map((ambient) => {
+                    const isSelected = (pomodoroSettings.ambientTheme || 'none') === ambient.id;
+                    return (
+                      <button
+                        key={ambient.id}
+                        id={`pomo-ambient-card-${ambient.id}`}
+                        type="button"
+                        onClick={() => {
+                          onUpdatePomodoroSettings({
+                            ambientTheme: ambient.id,
+                            ...(ambient.soundType && ambient.soundType !== 'none'
+                              ? { ambientSoundEnabled: pomodoroSettings.ambientSoundEnabled }
+                              : {}),
+                          });
+                        }}
+                        className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between min-h-[90px] cursor-pointer group ${
+                          isSelected
+                            ? 'border-sky-400 bg-sky-500/15 ring-2 ring-sky-400/30 shadow-md'
+                            : 'border-neutral-800 hover:border-neutral-700 bg-neutral-900/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-2">
+                          <div
+                            className="w-7 h-7 rounded-lg border border-neutral-700 relative overflow-hidden shadow-inner flex-shrink-0"
+                            style={{ background: ambient.bgGradient }}
+                          >
+                            <span
+                              className="absolute inset-0 m-auto w-2 h-2 rounded-full"
+                              style={{ backgroundColor: ambient.accentColor }}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {ambient.soundType && ambient.soundType !== 'none' && (
+                              <span
+                                className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 flex items-center gap-0.5"
+                                title={`Includes audio: ${ambient.soundLabel}`}
+                              >
+                                <Headphones className="w-2.5 h-2.5" />
+                                <span>Audio</span>
+                              </span>
+                            )}
+                            {isSelected && (
+                              <span className="w-4 h-4 rounded-full bg-sky-400 text-neutral-950 flex items-center justify-center flex-shrink-0">
+                                <Check className="w-2.5 h-2.5 stroke-[3]" />
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-xs font-semibold text-neutral-100 block group-hover:text-sky-300 transition-colors">
+                            {ambient.name}
+                          </span>
+                          <span className="text-[11px] text-neutral-400 line-clamp-1 block mt-0.5">
+                            {ambient.tagline}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Ambient Sound & Particle Options */}
+                {isPomoAmbientActive && (
+                  <div className="mt-3 pt-3 border-t border-neutral-800/80 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Audio soundscape toggle & volume */}
+                    {activePomoAmbientTheme.soundType && activePomoAmbientTheme.soundType !== 'none' ? (
+                      <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-neutral-200 flex items-center gap-1.5">
+                            <Headphones className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Ambient Soundscape</span>
+                          </span>
+                          <button
+                            type="button"
+                            id="pomo-ambient-sound-toggle-btn"
+                            onClick={() =>
+                              onUpdatePomodoroSettings({
+                                ambientSoundEnabled: !pomodoroSettings.ambientSoundEnabled,
+                              })
+                            }
+                            className={`text-[10px] px-2 py-0.5 rounded font-mono uppercase cursor-pointer ${
+                              pomodoroSettings.ambientSoundEnabled
+                                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 font-semibold'
+                                : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
+                            }`}
+                          >
+                            {pomodoroSettings.ambientSoundEnabled ? 'Active' : 'Muted'}
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                          <span>{activePomoAmbientTheme.soundLabel}</span>
+                          <span className="font-mono">{pomodoroSettings.ambientSoundVolume ?? 35}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="5"
+                          max="100"
+                          value={pomodoroSettings.ambientSoundVolume ?? 35}
+                          onChange={(e) =>
+                            onUpdatePomodoroSettings({
+                              ambientSoundVolume: parseInt(e.target.value, 10),
+                              ambientSoundEnabled: true,
+                            })
+                          }
+                          className="w-full accent-sky-400 cursor-pointer"
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-neutral-900/40 border border-neutral-800/60 flex items-center gap-2 text-neutral-400 text-xs">
+                        <span>Pure visual atmosphere without audio</span>
+                      </div>
+                    )}
+
+                    {/* Particle motion toggle */}
+                    <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-medium text-neutral-200 block">
+                          Atmospheric Motion
+                        </span>
+                        <span className="text-[11px] text-neutral-500">
+                          Wave motion, rain droplets & visual effects
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        id="pomo-ambient-particles-toggle"
+                        checked={pomodoroSettings.ambientParticles !== false}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({ ambientParticles: e.target.checked })
+                        }
+                        className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* SECTION 1: POMODORO COLOR THEMES */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -2027,6 +2229,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   />
                 </label>
               </div>
+
+              {/* Startup Reveal Replay */}
+              {onReplayIntro && (
+                <div className="pt-4 border-t border-neutral-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-semibold text-neutral-200 block">
+                      Startup Reveal
+                    </span>
+                    <span className="text-[11px] text-neutral-400 block">
+                      Experience the cinematic opening reveal
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    id="replay-startup-intro-btn"
+                    onClick={onReplayIntro}
+                    className="apple-hover flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-medium cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Replay Intro</span>
+                  </button>
+                </div>
+              )}
 
               {/* Reset to defaults */}
               <div className="pt-4 border-t border-neutral-800 flex justify-end">

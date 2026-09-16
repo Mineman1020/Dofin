@@ -19,9 +19,11 @@ export type ClockDigitSize = 'medium' | 'large' | 'huge' | 'fill';
 
 export type AmbientThemeId =
   | 'none'
+  | 'beachside-sunset'
+  | 'rainy-day'
+  | 'rainy-window'
   | 'aurora'
   | 'starlight'
-  | 'rainy-window'
   | 'campfire'
   | 'cyber-horizon'
   | 'zen-mist'
@@ -32,6 +34,7 @@ export type AmbientThemeId =
 
 export type AmbientSoundType =
   | 'none'
+  | 'ocean-waves'
   | 'rain'
   | 'campfire'
   | 'cosmic-drone'
@@ -141,6 +144,12 @@ export interface PomodoroSettings {
   customLongBreakColor?: string;
   ringWidth?: number; // e.g. 4, 8, 12, 16
   enableGlow?: boolean;
+
+  // Ambient atmosphere settings for Pomodoro
+  ambientTheme?: AmbientThemeId;
+  ambientSoundEnabled?: boolean;
+  ambientSoundVolume?: number; // 0 to 100
+  ambientParticles?: boolean;
 }
 
 export type PomodoroPhase = 'work' | 'shortBreak' | 'longBreak';

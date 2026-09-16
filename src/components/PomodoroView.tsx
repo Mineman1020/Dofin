@@ -26,14 +26,31 @@ import {
   X,
   Users,
   Trophy,
+  Headphones,
 } from 'lucide-react';
-import { PomodoroSettings, PomodoroPhase, ClockSettings, PomodoroTask, Party } from '../types';
-import { triggerSoundAlert, playPomodoroStart, playTickSound } from '../utils/audio';
+import {
+  PomodoroSettings,
+  PomodoroPhase,
+  ClockSettings,
+  PomodoroTask,
+  Party,
+  AmbientThemeId,
+  AmbientThemePreset,
+} from '../types';
+import {
+  triggerSoundAlert,
+  playPomodoroStart,
+  playTickSound,
+  startAmbientSoundscape,
+  stopAmbientSoundscape,
+  setAmbientSoundscapeVolume,
+} from '../utils/audio';
 import {
   FONT_OPTIONS,
   getResolvedPomodoroTheme,
   POMODORO_THEME_PRESETS,
   getMaxPomodoroFontSize,
+  AMBIENT_THEMES,
 } from '../utils/constants';
 import {
   getSavedPartyIds,
@@ -42,10 +59,12 @@ import {
   updatePartyMemberStatus,
   subscribeToParty,
 } from '../utils/partyService';
+import { AmbientBackground } from './AmbientBackground';
 
 interface PomodoroViewProps {
   settings: PomodoroSettings;
   clockSettings: ClockSettings;
+  onUpdateSettings?: (updated: Partial<PomodoroSettings>) => void;
   onOpenSettings: () => void;
   onGoToClock: () => void;
   onGoToWelcome: () => void;
@@ -60,6 +79,7 @@ const TASKS_STORAGE_KEY = 'desk_clock_pomodoro_tasks_v1';
 export const PomodoroView: React.FC<PomodoroViewProps> = ({
   settings,
   clockSettings,
+  onUpdateSettings,
   onOpenSettings,
   onGoToClock,
   onGoToWelcome,
@@ -74,6 +94,58 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   const [completedRounds, setCompletedRounds] = useState<number>(0);
   const [currentRound, setCurrentRound] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [ambientMenuOpen, setAmbientMenuOpen] = useState<boolean>(false);
+  const [soundMenuOpen, setSoundMenuOpen] = useState<boolean>(false);
+
+  // Active ambient theme definition for Pomodoro
+  const effectiveAmbientId: AmbientThemeId =
+    settings.ambientTheme && settings.ambientTheme !== 'none'
+      ? settings.ambientTheme
+      : settings.themeId === 'sync' && clockSettings.ambientTheme && clockSettings.ambientTheme !== 'none'
+      ? clockSettings.ambientTheme
+      : 'none';
+
+  const activeAmbient: AmbientThemePreset =
+    AMBIENT_THEMES.find((a) => a.id === effectiveAmbientId) || AMBIENT_THEMES[0];
+  const isAmbientActive = activeAmbient && activeAmbient.id !== 'none';
+
+  // Ambient soundscape audio coordinator for Pomodoro
+  useEffect(() => {
+    if (
+      isAmbientActive &&
+      settings.ambientSoundEnabled &&
+      activeAmbient.soundType &&
+      activeAmbient.soundType !== 'none'
+    ) {
+      startAmbientSoundscape(activeAmbient.soundType, settings.ambientSoundVolume ?? 35);
+    } else {
+      stopAmbientSoundscape();
+    }
+
+    return () => {
+      stopAmbientSoundscape();
+    };
+  }, [isAmbientActive, settings.ambientSoundEnabled, activeAmbient.soundType, activeAmbient.id]);
+
+  // Ambient volume changes
+  useEffect(() => {
+    if (settings.ambientSoundEnabled && settings.ambientSoundVolume !== undefined) {
+      setAmbientSoundscapeVolume(settings.ambientSoundVolume);
+    }
+  }, [settings.ambientSoundVolume, settings.ambientSoundEnabled]);
+
+  // Click outside to dismiss ambient dropdowns
+  useEffect(() => {
+    const handleWindowClick = () => {
+      setAmbientMenuOpen(false);
+      setSoundMenuOpen(false);
+    };
+
+    if (ambientMenuOpen || soundMenuOpen) {
+      window.addEventListener('click', handleWindowClick);
+      return () => window.removeEventListener('click', handleWindowClick);
+    }
+  }, [ambientMenuOpen, soundMenuOpen]);
 
   // Task Management State
   const [tasks, setTasks] = useState<PomodoroTask[]>(() => {
@@ -233,113 +305,269 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   const totalTime = getTotalTimeForPhase(phase);
   const prevConfiguredDurationRef = useRef<number>(totalTime);
 
+  // Precision Wall-Clock Refs to prevent timer drift and background throttling lag
+  const endTimeRef = useRef<number | null>(null);
+  const timeLeftRef = useRef<number>(timeLeft);
+  const lastSecondTickRef = useRef<number>(timeLeft);
+
+  // Fresh references for interval & event handlers to avoid stale closures
+  const settingsRef = useRef<PomodoroSettings>(settings);
+  settingsRef.current = settings;
+  const phaseRef = useRef<PomodoroPhase>(phase);
+  phaseRef.current = phase;
+  const currentRoundRef = useRef<number>(currentRound);
+  currentRoundRef.current = currentRound;
+  const completedRoundsRef = useRef<number>(completedRounds);
+  completedRoundsRef.current = completedRounds;
+  const activeTaskIdRef = useRef<string | null>(activeTaskId);
+  activeTaskIdRef.current = activeTaskId;
+
   // Switch phase
   const switchPhase = useCallback(
     (nextPhase: PomodoroPhase, autoStart: boolean = false) => {
       setPhase(nextPhase);
+      phaseRef.current = nextPhase;
       const nextDuration = getTotalTimeForPhase(nextPhase);
       setTimeLeft(nextDuration);
+      timeLeftRef.current = nextDuration;
+      lastSecondTickRef.current = nextDuration;
       prevConfiguredDurationRef.current = nextDuration;
-      setIsRunning(autoStart);
-      if (autoStart && settings.soundAlerts) {
-        playPomodoroStart();
+
+      if (autoStart) {
+        endTimeRef.current = Date.now() + nextDuration * 1000;
+        setIsRunning(true);
+        if (settingsRef.current.soundAlerts) {
+          playPomodoroStart();
+        }
+      } else {
+        endTimeRef.current = null;
+        setIsRunning(false);
       }
     },
-    [getTotalTimeForPhase, settings.soundAlerts]
+    [getTotalTimeForPhase]
   );
 
   // Play appropriate alert sound for the phase
   const playAlertForPhase = useCallback(
     (p: PomodoroPhase) => {
-      if (!settings.soundAlerts) return;
+      const currentSettings = settingsRef.current;
+      if (!currentSettings.soundAlerts) return;
       if (p === 'work') {
-        triggerSoundAlert(settings.workSound, settings.customWorkSoundData);
+        triggerSoundAlert(currentSettings.workSound, currentSettings.customWorkSoundData);
       } else if (p === 'shortBreak') {
-        triggerSoundAlert(settings.shortBreakSound, settings.customBreakSoundData);
+        triggerSoundAlert(currentSettings.shortBreakSound, currentSettings.customBreakSoundData);
       } else {
-        triggerSoundAlert(settings.longBreakSound, settings.customLongBreakSoundData);
+        triggerSoundAlert(currentSettings.longBreakSound, currentSettings.customLongBreakSoundData);
       }
     },
-    [settings]
+    []
   );
 
-  // Timer Tick
-  useEffect(() => {
-    let interval: number | null = null;
+  // Phase completion handler
+  const handlePhaseComplete = useCallback(() => {
+    const currentPhase = phaseRef.current;
+    playAlertForPhase(currentPhase);
 
-    if (isRunning && timeLeft > 0) {
-      interval = window.setInterval(() => {
-        if (phase === 'work') {
-          secondsFocusedInMinuteRef.current += 1;
+    if (currentPhase === 'work') {
+      const nextCompleted = completedRoundsRef.current + 1;
+      setCompletedRounds(nextCompleted);
+      completedRoundsRef.current = nextCompleted;
+
+      // Credit completed session to party leaderboard
+      const partyIds = getSavedPartyIds();
+      if (partyIds.length > 0) {
+        syncFocusTimeToParties(partyIds, 0, true, 'break');
+      }
+
+      // Increment active task completed pomodoros
+      if (activeTaskIdRef.current) {
+        const currentTaskId = activeTaskIdRef.current;
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === currentTaskId
+              ? { ...t, completedPomodoros: t.completedPomodoros + 1 }
+              : t
+          )
+        );
+      }
+
+      // Check for long break
+      if (currentRoundRef.current >= settingsRef.current.longBreakInterval) {
+        setCurrentRound(1);
+        currentRoundRef.current = 1;
+        switchPhase('longBreak', settingsRef.current.autoStartBreaks);
+      } else {
+        const nextRound = currentRoundRef.current + 1;
+        setCurrentRound(nextRound);
+        currentRoundRef.current = nextRound;
+        switchPhase('shortBreak', settingsRef.current.autoStartBreaks);
+      }
+    } else {
+      // Break completed, back to work
+      switchPhase('work', settingsRef.current.autoStartPomodoros);
+    }
+  }, [playAlertForPhase, switchPhase]);
+
+  // High-Precision Real-Time Engine (Drift-Free & Background Resilient)
+  useEffect(() => {
+    if (!isRunning) {
+      endTimeRef.current = null;
+      return;
+    }
+
+    // Ensure target end time is anchored to wall clock
+    if (!endTimeRef.current) {
+      endTimeRef.current = Date.now() + timeLeftRef.current * 1000;
+      lastSecondTickRef.current = timeLeftRef.current;
+    }
+
+    const checkTimerTick = () => {
+      if (!endTimeRef.current) return;
+      const now = Date.now();
+      const remainingMs = endTimeRef.current - now;
+      const calculatedSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+
+      if (calculatedSeconds !== timeLeftRef.current) {
+        const previousTime = timeLeftRef.current;
+        const secondsElapsed = Math.max(1, previousTime - calculatedSeconds);
+        timeLeftRef.current = calculatedSeconds;
+        setTimeLeft(calculatedSeconds);
+
+        // Sound tick on second change
+        if (calculatedSeconds < previousTime && settingsRef.current.tickSound && calculatedSeconds > 0) {
+          playTickSound();
+        }
+        lastSecondTickRef.current = calculatedSeconds;
+
+        // Focus progress sync for study parties
+        if (phaseRef.current === 'work') {
+          secondsFocusedInMinuteRef.current += secondsElapsed;
           if (secondsFocusedInMinuteRef.current >= 60) {
-            secondsFocusedInMinuteRef.current = 0;
+            const minutesToCredit = Math.floor(secondsFocusedInMinuteRef.current / 60);
+            secondsFocusedInMinuteRef.current = secondsFocusedInMinuteRef.current % 60;
             const partyIds = getSavedPartyIds();
             if (partyIds.length > 0) {
-              syncFocusTimeToParties(partyIds, 1, false, 'focusing');
+              syncFocusTimeToParties(partyIds, minutesToCredit, false, 'focusing');
             }
           }
         }
 
-        setTimeLeft((prev) => {
-          if (settings.tickSound) {
-            playTickSound();
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else if (timeLeft === 0 && isRunning) {
-      // Phase completed! Trigger sound alert for that phase
-      playAlertForPhase(phase);
-
-      if (phase === 'work') {
-        const nextCompleted = completedRounds + 1;
-        setCompletedRounds(nextCompleted);
-
-        // Credit completed session to party leaderboard
-        const partyIds = getSavedPartyIds();
-        if (partyIds.length > 0) {
-          syncFocusTimeToParties(partyIds, 0, true, 'break');
+        // Phase finished
+        if (calculatedSeconds <= 0) {
+          endTimeRef.current = null;
+          handlePhaseComplete();
         }
-
-        // Increment active task completed pomodoros
-        if (activeTaskId) {
-          setTasks((prev) =>
-            prev.map((t) =>
-              t.id === activeTaskId
-                ? { ...t, completedPomodoros: t.completedPomodoros + 1 }
-                : t
-            )
-          );
-        }
-
-        // Check for long break
-        if (currentRound >= settings.longBreakInterval) {
-          setCurrentRound(1);
-          switchPhase('longBreak', settings.autoStartBreaks);
-        } else {
-          setCurrentRound((c) => c + 1);
-          switchPhase('shortBreak', settings.autoStartBreaks);
-        }
-      } else {
-        // Break completed, back to work
-        switchPhase('work', settings.autoStartPomodoros);
       }
-    }
+    };
+
+    // Fast check (200ms) guarantees sub-second optical precision and eliminates timer cancellation delays
+    const interval = window.setInterval(checkTimerTick, 200);
+
+    // Immediate check when returning to tab or window focus
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkTimerTick();
+      }
+    };
+    const handleFocus = () => {
+      checkTimerTick();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      if (interval) clearInterval(interval);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, [
-    isRunning,
-    timeLeft,
-    phase,
-    completedRounds,
-    currentRound,
-    settings,
-    activeTaskId,
-    playAlertForPhase,
-    switchPhase,
-  ]);
+  }, [isRunning, handlePhaseComplete]);
+
+  // Live Browser Tab Title Synchronization
+  useEffect(() => {
+    if (isRunning) {
+      const minStr = String(Math.floor(timeLeft / 60)).padStart(2, '0');
+      const secStr = String(timeLeft % 60).padStart(2, '0');
+      const phaseLabel = phase === 'work' ? 'Focus' : 'Break';
+      document.title = `(${minStr}:${secStr}) ${phaseLabel} | Desk Clock`;
+    } else {
+      document.title = 'Desk Clock & Pomodoro';
+    }
+    return () => {
+      document.title = 'Desk Clock & Pomodoro';
+    };
+  }, [isRunning, timeLeft, phase]);
+
+  // Play / Pause toggle
+  const togglePlayPause = useCallback(() => {
+    setIsRunning((prev) => {
+      const next = !prev;
+      if (next) {
+        endTimeRef.current = Date.now() + timeLeftRef.current * 1000;
+        lastSecondTickRef.current = timeLeftRef.current;
+        if (settingsRef.current.soundAlerts) {
+          playPomodoroStart();
+        }
+      } else {
+        endTimeRef.current = null;
+      }
+      return next;
+    });
+  }, []);
+
+  // Reset current phase timer
+  const handleReset = useCallback(() => {
+    setIsRunning(false);
+    endTimeRef.current = null;
+    const duration = getTotalTimeForPhase(phaseRef.current);
+    setTimeLeft(duration);
+    timeLeftRef.current = duration;
+    lastSecondTickRef.current = duration;
+  }, [getTotalTimeForPhase]);
+
+  // Skip to next phase
+  const handleSkip = useCallback(() => {
+    if (phaseRef.current === 'work') {
+      if (currentRoundRef.current >= settingsRef.current.longBreakInterval) {
+        setCurrentRound(1);
+        currentRoundRef.current = 1;
+        switchPhase('longBreak');
+      } else {
+        const nextRound = currentRoundRef.current + 1;
+        setCurrentRound(nextRound);
+        currentRoundRef.current = nextRound;
+        switchPhase('shortBreak');
+      }
+    } else {
+      switchPhase('work');
+    }
+  }, [switchPhase]);
+
+  // Quick adjust: add 1 minute
+  const handleAddMinute = useCallback(() => {
+    setTimeLeft((prev) => {
+      const next = prev + 60;
+      timeLeftRef.current = next;
+      lastSecondTickRef.current = next;
+      if (endTimeRef.current) {
+        endTimeRef.current += 60000;
+      }
+      return next;
+    });
+  }, []);
+
+  // Quick adjust: subtract 1 minute
+  const handleMinusMinute = useCallback(() => {
+    setTimeLeft((prev) => {
+      const next = Math.max(60, prev - 60);
+      timeLeftRef.current = next;
+      lastSecondTickRef.current = next;
+      if (endTimeRef.current) {
+        endTimeRef.current = Date.now() + next * 1000;
+      }
+      return next;
+    });
+  }, []);
 
   // Only adjust timeLeft if interval duration in settings actually changes and timer is not running
   useEffect(() => {
@@ -348,6 +576,8 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       prevConfiguredDurationRef.current = configuredDuration;
       if (!isRunning) {
         setTimeLeft(configuredDuration);
+        timeLeftRef.current = configuredDuration;
+        lastSecondTickRef.current = configuredDuration;
       }
     }
   }, [settings.workMinutes, settings.shortBreakMinutes, settings.longBreakMinutes, phase, isRunning, getTotalTimeForPhase]);
@@ -361,18 +591,12 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         document.activeElement?.tagName !== 'TEXTAREA'
       ) {
         e.preventDefault();
-        setIsRunning((prev) => {
-          const next = !prev;
-          if (next && settings.soundAlerts) {
-            playPomodoroStart();
-          }
-          return next;
-        });
+        togglePlayPause();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settings.soundAlerts]);
+  }, [togglePlayPause]);
 
   // Fullscreen handler
   const toggleFullscreen = async () => {
@@ -608,12 +832,21 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         isIdle ? 'cursor-none' : ''
       }`}
       style={{
-        backgroundColor: resolvedTheme.bg,
+        backgroundColor: isAmbientActive ? 'transparent' : resolvedTheme.bg,
+        background: isAmbientActive ? activeAmbient.bgGradient : undefined,
         color: resolvedTheme.textColor,
       }}
     >
-      {/* Ambient lighting backdrop (Hidden in Simple mode or subdued when idle) */}
-      {!isSimpleMode && resolvedTheme.enableGlow && (
+      {/* 0. Dynamic Ambient Atmospheric Canvas (Beachside Sunset, Rainy Day, Aurora, etc.) */}
+      {isAmbientActive && (
+        <AmbientBackground
+          ambientTheme={effectiveAmbientId}
+          particles={settings.ambientParticles !== false}
+        />
+      )}
+
+      {/* Ambient lighting backdrop (Hidden in Simple mode, when idle, or when ambient theme is active) */}
+      {!isAmbientActive && !isSimpleMode && resolvedTheme.enableGlow && (
         <div
           className={`absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] rounded-full blur-[150px] pointer-events-none transition-all duration-1000 ${
             isIdle ? 'opacity-10' : 'opacity-25'
@@ -639,7 +872,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           <button
             id="pomo-back-welcome-btn"
             onClick={onGoToWelcome}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border transition-all cursor-pointer active:scale-95 ${
+            className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
               resolvedTheme.isDark
                 ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
                 : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
@@ -657,11 +890,217 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Quick Ambient Atmosphere Popover */}
+          <div className="relative">
+            <button
+              id="pomo-ambient-theme-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAmbientMenuOpen((prev) => !prev);
+                setSoundMenuOpen(false);
+              }}
+              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer shadow-sm ${
+                isAmbientActive
+                  ? 'border-amber-400/60 bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
+                  : resolvedTheme.isDark
+                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
+                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
+              }`}
+              title="Ambient Themes & Environments (Beachside Sunset, Rainy Day, Aurora...)"
+            >
+              <Sparkles
+                className={`w-3.5 h-3.5 ${
+                  isAmbientActive ? 'text-amber-400 animate-spin-slow' : 'text-amber-500'
+                }`}
+              />
+              <span className="hidden sm:inline">
+                {isAmbientActive ? activeAmbient.name : 'Atmosphere'}
+              </span>
+            </button>
+
+            {/* Ambient Themes Popover Menu */}
+            {ambientMenuOpen && (
+              <div
+                id="pomo-ambient-menu-dropdown"
+                onClick={(e) => e.stopPropagation()}
+                className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-h-[82vh] overflow-y-auto p-3 sm:p-4 rounded-2xl bg-neutral-900/98 backdrop-blur-2xl border border-neutral-700/80 shadow-2xl z-50 text-white animate-fadeIn"
+              >
+                <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-neutral-800">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-neutral-200">
+                      Focus Atmospheres & Moods
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (onUpdateSettings) {
+                        onUpdateSettings({ ambientTheme: 'none', ambientSoundEnabled: false });
+                      }
+                      setAmbientMenuOpen(false);
+                    }}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
+                      effectiveAmbientId === 'none'
+                        ? 'border-neutral-500 bg-neutral-800 text-white font-medium'
+                        : 'border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-neutral-200'
+                    }`}
+                  >
+                    Minimal Clean (Off)
+                  </button>
+                </div>
+
+                {/* Ambient Themes List */}
+                <div className="space-y-1.5 max-h-[65vh] overflow-y-auto pr-1">
+                  {AMBIENT_THEMES.filter((t) => t.id !== 'none').map((theme) => {
+                    const isSelected = effectiveAmbientId === theme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        id={`pomo-ambient-opt-${theme.id}`}
+                        onClick={() => {
+                          if (onUpdateSettings) {
+                            onUpdateSettings({
+                              ambientTheme: theme.id,
+                              ...(theme.soundType && theme.soundType !== 'none'
+                                ? { ambientSoundEnabled: settings.ambientSoundEnabled }
+                                : {}),
+                            });
+                          }
+                          setAmbientMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-400/15 text-white border border-amber-400/40 shadow-sm'
+                            : 'hover:bg-neutral-800/70 text-neutral-300 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className="w-7 h-7 rounded-lg border border-neutral-700 flex-shrink-0 relative overflow-hidden"
+                            style={{ background: theme.bgGradient }}
+                          >
+                            <span
+                              className="absolute inset-0 m-auto w-2 h-2 rounded-full"
+                              style={{ backgroundColor: theme.accentColor }}
+                            />
+                          </div>
+
+                          <div className="truncate">
+                            <div className="text-xs font-semibold truncate flex items-center gap-1.5">
+                              <span>{theme.name}</span>
+                              {theme.soundType && theme.soundType !== 'none' && (
+                                <Headphones className="w-3 h-3 text-sky-400 opacity-85 shrink-0" />
+                              )}
+                            </div>
+                            <div className="text-[11px] text-neutral-400 truncate mt-0.5">
+                              {theme.tagline}
+                            </div>
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <Check className="w-4 h-4 text-amber-400 flex-shrink-0 ml-2" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Ambient Audio Toggle / Volume Popover */}
+          {isAmbientActive && activeAmbient.soundType && activeAmbient.soundType !== 'none' && (
+            <div className="relative">
+              <button
+                id="pomo-ambient-sound-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSoundMenuOpen((prev) => !prev);
+                  setAmbientMenuOpen(false);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                  settings.ambientSoundEnabled
+                    ? 'border-sky-400/60 bg-sky-500/15 text-sky-300 ring-1 ring-sky-400/30'
+                    : resolvedTheme.isDark
+                    ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
+                    : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
+                }`}
+                title="Ambient Soundscape Controls"
+              >
+                {settings.ambientSoundEnabled ? (
+                  <Volume2 className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+                ) : (
+                  <VolumeX className="w-3.5 h-3.5 text-neutral-400" />
+                )}
+                <span className="hidden sm:inline">
+                  {settings.ambientSoundEnabled ? activeAmbient.soundLabel : 'Soundscape Muted'}
+                </span>
+              </button>
+
+              {/* Sound Settings Popover */}
+              {soundMenuOpen && (
+                <div
+                  id="pomo-ambient-sound-dropdown"
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-full mt-2 w-64 p-3.5 rounded-2xl bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 shadow-2xl z-50 text-white animate-fadeIn"
+                >
+                  <div className="flex items-center justify-between pb-2 mb-3 border-b border-neutral-800">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-neutral-300">
+                      {activeAmbient.soundLabel}
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (onUpdateSettings) {
+                          onUpdateSettings({
+                            ambientSoundEnabled: !settings.ambientSoundEnabled,
+                          });
+                        }
+                      }}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer ${
+                        settings.ambientSoundEnabled
+                          ? 'bg-sky-500/20 text-sky-300 border-sky-400/40'
+                          : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+                      }`}
+                    >
+                      {settings.ambientSoundEnabled ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[11px] text-neutral-300">
+                      <span>Soundscape Volume</span>
+                      <span className="font-mono text-sky-400">
+                        {settings.ambientSoundVolume ?? 35}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={settings.ambientSoundVolume ?? 35}
+                      onChange={(e) => {
+                        if (onUpdateSettings) {
+                          onUpdateSettings({
+                            ambientSoundVolume: parseInt(e.target.value, 10),
+                            ambientSoundEnabled: true,
+                          });
+                        }
+                      }}
+                      className="w-full accent-sky-400 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Simple Mode Button (Toggles minimal distraction-free layout) */}
           <button
             id="pomo-simple-mode-btn"
             onClick={toggleSimpleMode}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-sm active:scale-95 ${
+            className={`apple-hover flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border cursor-pointer shadow-sm ${
               isSimpleMode
                 ? 'bg-amber-500 border-amber-400 text-neutral-950 font-bold shadow-amber-500/20'
                 : resolvedTheme.isDark
@@ -678,7 +1117,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           <button
             id="pomo-dark-mode-btn"
             onClick={onToggleDarkMode}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all cursor-pointer shadow-sm active:scale-95 ${
+            className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer shadow-sm ${
               resolvedTheme.isDark
                 ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-200'
                 : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
@@ -704,7 +1143,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
               <button
                 id="pomo-to-clock-btn"
                 onClick={onGoToClock}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border transition-all cursor-pointer active:scale-95 ${
+                className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
                   resolvedTheme.isDark
                     ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
                     : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
@@ -719,7 +1158,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                 <button
                   id="pomo-parties-btn"
                   onClick={() => onOpenParties(activeParty ? 'leaderboard' : 'my-parties')}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                  className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border cursor-pointer shadow-sm ${
                     activeParty
                       ? 'border-amber-400/50 bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
                       : resolvedTheme.isDark
@@ -739,7 +1178,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
               <button
                 id="pomo-fullscreen-btn"
                 onClick={toggleFullscreen}
-                className={`p-2 rounded-xl text-xs border transition-all cursor-pointer active:scale-95 ${
+                className={`apple-icon-hover p-2 rounded-xl text-xs border cursor-pointer ${
                   resolvedTheme.isDark
                     ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
                     : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
@@ -753,7 +1192,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
               <button
                 id="pomo-settings-btn"
                 onClick={onOpenSettings}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all cursor-pointer active:scale-95 ${
+                className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
                   resolvedTheme.isDark
                     ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
                     : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
@@ -790,7 +1229,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
             <button
               id="phase-work-btn"
               onClick={() => switchPhase('work')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              className={`apple-hover px-4 py-2 rounded-xl text-xs font-semibold tracking-wide cursor-pointer ${
                 phase === 'work'
                   ? 'shadow-md font-bold'
                   : 'opacity-70 hover:opacity-100'
@@ -806,7 +1245,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
             <button
               id="phase-short-break-btn"
               onClick={() => switchPhase('shortBreak')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              className={`apple-hover px-4 py-2 rounded-xl text-xs font-semibold tracking-wide cursor-pointer ${
                 phase === 'shortBreak'
                   ? 'shadow-md font-bold'
                   : 'opacity-70 hover:opacity-100'
@@ -822,7 +1261,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
             <button
               id="phase-long-break-btn"
               onClick={() => switchPhase('longBreak')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              className={`apple-hover px-4 py-2 rounded-xl text-xs font-semibold tracking-wide cursor-pointer ${
                 phase === 'longBreak'
                   ? 'shadow-md font-bold'
                   : 'opacity-70 hover:opacity-100'
@@ -996,7 +1435,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                 >
                   <button
                     id="pomo-minus-time-btn"
-                    onClick={() => setTimeLeft((t) => Math.max(60, t - 60))}
+                    onClick={handleMinusMinute}
                     className="p-1 rounded-lg border text-xs cursor-pointer transition-colors"
                     style={{
                       backgroundColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
@@ -1010,7 +1449,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                   <span className="text-[10px] font-mono text-neutral-500">±1m</span>
                   <button
                     id="pomo-plus-time-btn"
-                    onClick={() => setTimeLeft((t) => t + 60)}
+                    onClick={handleAddMinute}
                     className="p-1 rounded-lg border text-xs cursor-pointer transition-colors"
                     style={{
                       backgroundColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
@@ -1104,14 +1543,8 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                 {/* Play / Pause */}
                 <button
                   id="pomo-play-pause-btn"
-                  onClick={() => {
-                    const nextState = !isRunning;
-                    setIsRunning(nextState);
-                    if (nextState && settings.soundAlerts) {
-                      playPomodoroStart();
-                    }
-                  }}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all cursor-pointer active:scale-90 ${
+                  onClick={togglePlayPause}
+                  className={`apple-hover w-10 h-10 rounded-xl flex items-center justify-center shadow-md cursor-pointer ${
                     isRunning
                       ? resolvedTheme.isDark
                         ? 'bg-neutral-800 hover:bg-neutral-700 border border-neutral-700'
@@ -1135,20 +1568,8 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                 {/* Skip */}
                 <button
                   id="pomo-skip-btn"
-                  onClick={() => {
-                    if (phase === 'work') {
-                      if (currentRound >= settings.longBreakInterval) {
-                        setCurrentRound(1);
-                        switchPhase('longBreak');
-                      } else {
-                        setCurrentRound((c) => c + 1);
-                        switchPhase('shortBreak');
-                      }
-                    } else {
-                      switchPhase('work');
-                    }
-                  }}
-                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
+                  onClick={handleSkip}
+                  className={`apple-icon-hover w-9 h-9 rounded-xl border flex items-center justify-center cursor-pointer ${
                     isDarkMode
                       ? 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800'
                       : 'bg-white border-neutral-300 text-neutral-600 hover:text-black hover:bg-neutral-50 shadow-sm'
@@ -1161,11 +1582,8 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                 {/* Reset */}
                 <button
                   id="pomo-reset-btn"
-                  onClick={() => {
-                    setIsRunning(false);
-                    setTimeLeft(getTotalTimeForPhase(phase));
-                  }}
-                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
+                  onClick={handleReset}
+                  className={`apple-icon-hover w-9 h-9 rounded-xl border flex items-center justify-center cursor-pointer ${
                     isDarkMode
                       ? 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800'
                       : 'bg-white border-neutral-300 text-neutral-600 hover:text-black hover:bg-neutral-50 shadow-sm'
@@ -1195,7 +1613,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                 <button
                   id="pomo-add-task-open-btn"
                   onClick={() => setIsTaskModalOpen(true)}
-                  className="w-8 h-8 rounded-xl border flex items-center justify-center cursor-pointer transition-all active:scale-90"
+                  className="apple-icon-hover w-8 h-8 rounded-xl border flex items-center justify-center cursor-pointer shadow-sm"
                   style={{
                     backgroundColor: `${currentTheme.accent}18`,
                     borderColor: `${currentTheme.accent}45`,
@@ -1229,7 +1647,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                         <button
                           id={`task-num-btn-${idx + 1}`}
                           onClick={() => handleToggleTaskCompleted(task.id)}
-                          className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl border flex items-center justify-center font-mono font-bold text-sm transition-all cursor-pointer select-none active:scale-90 ${
+                          className={`apple-hover w-9 h-9 sm:w-10 sm:h-10 rounded-xl border flex items-center justify-center font-mono font-bold text-sm cursor-pointer select-none ${
                             isDone ? 'line-through' : ''
                           }`}
                           style={

@@ -25,6 +25,34 @@ export const AMBIENT_THEMES: AmbientThemePreset[] = [
     soundLabel: 'Muted',
   },
   {
+    id: 'beachside-sunset',
+    name: 'Beachside Sunset',
+    tagline: 'Golden tropical sun sinking over turquoise ocean swells with gentle rolling surf',
+    bgGradient: 'linear-gradient(180deg, #170826 0%, #3a1132 28%, #762238 56%, #b54f36 78%, #0d283c 100%)',
+    textColor: '#fff1f2',
+    accentColor: '#fb923c',
+    secondaryColor: '#38bdf8',
+    glowColor: 'rgba(251, 146, 60, 0.45)',
+    recommendedFont: 'outfit',
+    isDark: true,
+    soundType: 'ocean-waves',
+    soundLabel: 'Ocean Surf & Breakers',
+  },
+  {
+    id: 'rainy-day',
+    name: 'Rainy Day Overcast',
+    tagline: 'Misty slate skies, soothing raindrops on glass with ground splash ripples',
+    bgGradient: 'linear-gradient(180deg, #0d1520 0%, #152232 45%, #1a2a3e 70%, #0e1724 100%)',
+    textColor: '#e2e8f0',
+    accentColor: '#60a5fa',
+    secondaryColor: '#94a3b8',
+    glowColor: 'rgba(96, 165, 250, 0.35)',
+    recommendedFont: 'jetbrains',
+    isDark: true,
+    soundType: 'rain',
+    soundLabel: 'Soothing Steady Rain',
+  },
+  {
     id: 'aurora',
     name: 'Aurora Borealis',
     tagline: 'Dancing ribbons of emerald and violet across an arctic midnight sky',
@@ -477,6 +505,10 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
   customLongBreakColor: '#10b981',
   ringWidth: 8,
   enableGlow: true,
+  ambientTheme: 'none',
+  ambientSoundEnabled: false,
+  ambientSoundVolume: 35,
+  ambientParticles: true,
 };
 
 // Resolves actual effective Pomodoro styling, colors, and background
@@ -485,6 +517,33 @@ export function getResolvedPomodoroTheme(
   clockSettings: ClockSettings,
   isDarkMode: boolean
 ) {
+  // If ambient atmosphere is explicitly set on Pomodoro or synced with Clock
+  const activeAmbientId =
+    pomoSettings.ambientTheme && pomoSettings.ambientTheme !== 'none'
+      ? pomoSettings.ambientTheme
+      : pomoSettings.themeId === 'sync' && clockSettings.ambientTheme && clockSettings.ambientTheme !== 'none'
+      ? clockSettings.ambientTheme
+      : null;
+
+  if (activeAmbientId) {
+    const ambientPreset = AMBIENT_THEMES.find((a) => a.id === activeAmbientId);
+    if (ambientPreset && ambientPreset.id !== 'none') {
+      return {
+        id: ambientPreset.id,
+        name: ambientPreset.name,
+        bg: 'transparent',
+        textColor: ambientPreset.textColor,
+        workColor: ambientPreset.accentColor,
+        shortBreakColor: ambientPreset.secondaryColor,
+        longBreakColor: ambientPreset.glowColor !== 'none' ? ambientPreset.accentColor : '#34d399',
+        isDark: ambientPreset.isDark,
+        cardBg: ambientPreset.isDark ? 'rgba(15, 15, 20, 0.6)' : 'rgba(255, 255, 255, 0.75)',
+        ringWidth: pomoSettings.ringWidth || 8,
+        enableGlow: pomoSettings.enableGlow !== false,
+      };
+    }
+  }
+
   // If synced with Desk Clock
   if (pomoSettings.themeId === 'sync') {
     const clockTheme =
