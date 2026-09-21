@@ -7,6 +7,8 @@ import {
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { ClockView } from './components/ClockView';
 import { PomodoroView } from './components/PomodoroView';
+import { TaskTrackerView } from './components/TaskTrackerView';
+import { StatsView } from './components/StatsView';
 import { SettingsModal } from './components/SettingsModal';
 import { NameModal } from './components/NameModal';
 import { PartyModal } from './components/PartyModal';
@@ -229,6 +231,8 @@ export default function App() {
           onOpenParties={() => handleOpenParties('my-parties')}
           onGoToWelcome={() => setCurrentView('welcome')}
           onGoToPomodoro={() => setCurrentView('pomodoro')}
+          onGoToTasks={() => setCurrentView('tasks')}
+          onGoToStats={() => setCurrentView('stats')}
           userName={userName || 'Friend'}
           isDarkMode={isDarkMode}
           onToggleDarkMode={handleToggleDarkMode}
@@ -245,6 +249,42 @@ export default function App() {
           onOpenParties={handleOpenParties}
           onGoToClock={() => setCurrentView('clock')}
           onGoToWelcome={() => setCurrentView('welcome')}
+          onGoToTasks={() => setCurrentView('tasks')}
+          onGoToStats={() => setCurrentView('stats')}
+          userName={userName || 'Friend'}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={handleToggleDarkMode}
+        />
+      )}
+
+      {/* 4. Standalone Task Tracker View */}
+      {currentView === 'tasks' && (
+        <TaskTrackerView
+          clockSettings={clockSettings}
+          pomodoroSettings={pomodoroSettings}
+          onGoToWelcome={() => setCurrentView('welcome')}
+          onGoToClock={() => setCurrentView('clock')}
+          onGoToPomodoro={() => setCurrentView('pomodoro')}
+          onGoToStats={() => setCurrentView('stats')}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenParties={handleOpenParties}
+          userName={userName || 'Friend'}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={handleToggleDarkMode}
+        />
+      )}
+
+      {/* 5. Weekly Progress & Data Visualization View */}
+      {currentView === 'stats' && (
+        <StatsView
+          clockSettings={clockSettings}
+          pomodoroSettings={pomodoroSettings}
+          onGoToWelcome={() => setCurrentView('welcome')}
+          onGoToClock={() => setCurrentView('clock')}
+          onGoToPomodoro={() => setCurrentView('pomodoro')}
+          onGoToTasks={() => setCurrentView('tasks')}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenParties={handleOpenParties}
           userName={userName || 'Friend'}
           isDarkMode={isDarkMode}
           onToggleDarkMode={handleToggleDarkMode}

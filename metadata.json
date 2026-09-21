@@ -1,6 +1,6 @@
 {
   "name": "Desk Clock & Pomodoro",
-  "description": "A customizable ambient desk clock and Pomodoro timer designed for desk and table setups.",
+  "description": "A customizable ambient desk clock, Pomodoro timer, standalone task tracker, and Recharts weekly productivity visualization designed for desk and table setups.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

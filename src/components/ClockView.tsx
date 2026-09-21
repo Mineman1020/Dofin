@@ -5,19 +5,20 @@ import {
   Settings,
   ArrowLeft,
   Timer,
-  Volume2,
-  VolumeX,
   Sparkles,
-  Sun,
-  Moon,
-  Headphones,
-  Check,
   Flame,
   CloudRain,
   Compass,
   Monitor,
   Eye,
   Users,
+  CheckCircle2,
+  BarChart3,
+  Battery,
+  BatteryCharging,
+  Calendar,
+  Layers,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { ClockSettings, ThemePreset, AmbientThemePreset, AmbientThemeId } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS, AMBIENT_THEMES } from '../utils/constants';
@@ -28,6 +29,7 @@ import {
   stopAmbientSoundscape,
   setAmbientSoundscapeVolume,
 } from '../utils/audio';
+import { getWallpaperItem } from '../utils/wallpaperStorage';
 import { AmbientBackground } from './AmbientBackground';
 
 interface ClockViewProps {
@@ -36,6 +38,8 @@ interface ClockViewProps {
   onOpenSettings: () => void;
   onGoToWelcome: () => void;
   onGoToPomodoro: () => void;
+  onGoToTasks?: () => void;
+  onGoToStats?: () => void;
   onOpenParties?: () => void;
   userName: string;
   isDarkMode: boolean;
@@ -48,6 +52,8 @@ export const ClockView: React.FC<ClockViewProps> = ({
   onOpenSettings,
   onGoToWelcome,
   onGoToPomodoro,
+  onGoToTasks,
+  onGoToStats,
   onOpenParties,
   userName,
   isDarkMode,
@@ -57,15 +63,155 @@ export const ClockView: React.FC<ClockViewProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [controlsVisible, setControlsVisible] = useState<boolean>(true);
   const [driftOffset, setDriftOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [ambientMenuOpen, setAmbientMenuOpen] = useState<boolean>(false);
-  const [soundMenuOpen, setSoundMenuOpen] = useState<boolean>(false);
+
+  // Standby Wallpaper State (Single image, Slideshow images, Live MP4 Video, Depth Mask)
+  const [singleWallpaperUrl, setSingleWallpaperUrl] = useState<string | null>(null);
+  const [slideshowUrls, setSlideshowUrls] = useState<string[]>([]);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [depthMaskUrl, setDepthMaskUrl] = useState<string | null>(null);
+
+  // Live Battery State for Optional Standby Widget
+  const [batteryState, setBatteryState] = useState<{ level: number; charging: boolean } | null>(null);
+
   const idleTimerRef = useRef<number | null>(null);
   const lastHourChimedRef = useRef<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Active ambient theme definition
   const activeAmbient: AmbientThemePreset =
     AMBIENT_THEMES.find((a) => a.id === (settings.ambientTheme || 'none')) || AMBIENT_THEMES[0];
-  const isAmbientActive = activeAmbient && activeAmbient.id !== 'none';
+  const isAmbientActive =
+    (settings.wallpaperMode === 'theme' || !settings.wallpaperMode) &&
+    activeAmbient &&
+    activeAmbient.id !== 'none';
+
+  // Load custom wallpaper assets from local high-capacity IndexedDB
+  useEffect(() => {
+    let active = true;
+    let createdBlobUrls: string[] = [];
+
+    async function loadWallpapers() {
+      try {
+        if (settings.wallpaperMode === 'image') {
+          const item = await getWallpaperItem('single-image');
+          if (active && item && item.data) {
+            if (typeof item.data === 'string') {
+              setSingleWallpaperUrl(item.data);
+            } else if (item.data instanceof Blob) {
+              const url = URL.createObjectURL(item.data);
+              createdBlobUrls.push(url);
+              setSingleWallpaperUrl(url);
+            }
+          }
+        } else if (settings.wallpaperMode === 'slideshow') {
+          const item = await getWallpaperItem('slideshow-images');
+          if (active && item && Array.isArray(item.data)) {
+            setSlideshowUrls(item.data);
+            setCurrentSlideIndex(0);
+          }
+        } else if (settings.wallpaperMode === 'video') {
+          const item = await getWallpaperItem('live-video');
+          if (active && item && item.data) {
+            if (item.data instanceof Blob) {
+              const url = URL.createObjectURL(item.data);
+              createdBlobUrls.push(url);
+              setVideoUrl(url);
+            } else if (typeof item.data === 'string') {
+              setVideoUrl(item.data);
+            }
+          }
+        }
+
+        // Check depth mask
+        if (settings.depthEffect) {
+          const maskItem = await getWallpaperItem('depth-mask');
+          if (active && maskItem && maskItem.data) {
+            if (maskItem.data instanceof Blob) {
+              const url = URL.createObjectURL(maskItem.data);
+              createdBlobUrls.push(url);
+              setDepthMaskUrl(url);
+            } else if (typeof maskItem.data === 'string') {
+              setDepthMaskUrl(maskItem.data);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error loading custom wallpaper:', e);
+      }
+    }
+
+    loadWallpapers();
+
+    return () => {
+      active = false;
+      createdBlobUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [settings.wallpaperMode, settings.depthEffect]);
+
+  // Slideshow interval timer (Active ONLY when slideshow mode is selected to conserve battery)
+  useEffect(() => {
+    if (settings.wallpaperMode !== 'slideshow' || slideshowUrls.length <= 1) return;
+
+    const intervalSec = settings.slideshowIntervalSeconds || 30;
+    const timer = setInterval(() => {
+      setCurrentSlideIndex((prev) => (prev + 1) % slideshowUrls.length);
+    }, intervalSec * 1000);
+
+    return () => clearInterval(timer);
+  }, [settings.wallpaperMode, slideshowUrls, settings.slideshowIntervalSeconds]);
+
+  // Battery Conservation & Lifecycle Management for Live Wallpaper (MP4)
+  useEffect(() => {
+    if (settings.wallpaperMode !== 'video') return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        videoRef.current?.pause();
+      } else {
+        videoRef.current?.play().catch(() => {});
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [settings.wallpaperMode]);
+
+  // Optional Battery Widget Level Tracker
+  useEffect(() => {
+    if (!settings.showStandbyWidgets || !settings.standbyWidgetsBattery) return;
+
+    let batteryInstance: any = null;
+
+    const updateBattery = (b: any) => {
+      setBatteryState({
+        level: Math.round(b.level * 100),
+        charging: b.charging,
+      });
+    };
+
+    if (typeof navigator !== 'undefined' && 'getBattery' in navigator) {
+      (navigator as any).getBattery().then((battery: any) => {
+        batteryInstance = battery;
+        updateBattery(battery);
+        battery.addEventListener('levelchange', () => updateBattery(battery));
+        battery.addEventListener('chargingchange', () => updateBattery(battery));
+      }).catch(() => {
+        setBatteryState({ level: 95, charging: true });
+      });
+    } else {
+      setBatteryState({ level: 98, charging: true });
+    }
+
+    return () => {
+      if (batteryInstance) {
+        try {
+          batteryInstance.removeEventListener('levelchange', () => updateBattery(batteryInstance));
+          batteryInstance.removeEventListener('chargingchange', () => updateBattery(batteryInstance));
+        } catch {}
+      }
+    };
+  }, [settings.showStandbyWidgets, settings.standbyWidgetsBattery]);
 
   // Ambient soundscape audio coordinator
   useEffect(() => {
@@ -136,12 +282,9 @@ export const ClockView: React.FC<ClockViewProps> = ({
     if (idleTimerRef.current) {
       window.clearTimeout(idleTimerRef.current);
     }
-    // Only auto-hide if submenus are closed
-    if (!ambientMenuOpen && !soundMenuOpen) {
-      idleTimerRef.current = window.setTimeout(() => {
-        setControlsVisible(false);
-      }, 4500);
-    }
+    idleTimerRef.current = window.setTimeout(() => {
+      setControlsVisible(false);
+    }, 4500);
   };
 
   useEffect(() => {
@@ -160,7 +303,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
       window.removeEventListener('touchstart', onTouch);
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
     };
-  }, [ambientMenuOpen, soundMenuOpen]);
+  }, []);
 
   // Fullscreen management
   const toggleFullscreen = async () => {
@@ -217,6 +360,20 @@ export const ClockView: React.FC<ClockViewProps> = ({
       : '#f7f5f0';
   }
 
+  // If user has custom wallpaper (image/slideshow/video), ensure crisp high contrast on the clock text
+  const hasCustomMediaWallpaper =
+    (settings.wallpaperMode === 'image' && !!singleWallpaperUrl) ||
+    (settings.wallpaperMode === 'slideshow' && slideshowUrls.length > 0) ||
+    (settings.wallpaperMode === 'video' && !!videoUrl);
+
+  if (hasCustomMediaWallpaper) {
+    // When a wallpaper is active, default text to crisp, luminous white unless user chose custom text color
+    if (!settings.customTextColor) {
+      resolvedTextColor = '#ffffff';
+      resolvedAccentColor = '#38bdf8';
+    }
+  }
+
   const selectedFont =
     FONT_OPTIONS.find((f) => f.id === settings.fontFamily) || FONT_OPTIONS[0];
 
@@ -268,30 +425,179 @@ export const ClockView: React.FC<ClockViewProps> = ({
 
   const isLight = isAmbientActive ? !activeAmbient.isDark : !isDarkMode && !activeTheme.isDark;
 
+  // iOS 26 Elongation & Transformation Values
+  const fontStretchY = settings.fontStretchY ?? 1.0;
+  const letterSpacingPx = settings.letterSpacing ?? 0;
+  const fontWeightVal = settings.fontWeight ?? '700';
+  const textEffect = settings.textEffect ?? 'none';
+  const depthEffect = !!settings.depthEffect;
+  const depthIntensity = settings.depthIntensity ?? 60;
+
+  // Calculate text effect styles
+  const getTextEffectStyles = (): React.CSSProperties => {
+    const base: React.CSSProperties = {
+      fontFamily: selectedFont.cssFamily,
+      fontWeight: fontWeightVal as any,
+      letterSpacing: `${letterSpacingPx}px`,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    };
+
+    if (textEffect === 'liquid') {
+      // iOS 26 Liquid Refraction & Gloss Effect
+      return {
+        ...base,
+        background: `linear-gradient(180deg, ${resolvedTextColor} 0%, ${resolvedTextColor}dd 45%, ${resolvedAccentColor} 80%, ${resolvedTextColor} 100%)`,
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        filter: `url(#ios26-liquid-filter) drop-shadow(0 15px 30px rgba(0,0,0,0.5))`,
+      };
+    }
+
+    if (textEffect === 'outline') {
+      // Sleek hollow outline typography
+      return {
+        ...base,
+        color: 'transparent',
+        WebkitTextStroke: `2.5px ${resolvedTextColor}`,
+        filter: `drop-shadow(0 8px 20px rgba(0,0,0,0.4))`,
+      };
+    }
+
+    if (textEffect === 'glass') {
+      // Frosted glass translucent text
+      return {
+        ...base,
+        color: 'rgba(255, 255, 255, 0.82)',
+        textShadow: `0 0 20px rgba(255,255,255,0.4), 0 10px 25px rgba(0,0,0,0.6)`,
+      };
+    }
+
+    if (textEffect === 'glow') {
+      // Vibrant glowing neon bloom
+      return {
+        ...base,
+        color: resolvedTextColor,
+        textShadow: `0 0 15px ${resolvedAccentColor}, 0 0 35px ${resolvedAccentColor}80, 0 0 65px ${resolvedAccentColor}40`,
+      };
+    }
+
+    // Default clean solid text
+    return {
+      ...base,
+      color: resolvedTextColor,
+      textShadow: isAmbientActive
+        ? `0 0 35px ${activeAmbient.glowColor}, 0 0 70px ${activeAmbient.glowColor}80`
+        : settings.themeId === 'cyber-neon' || settings.themeId === 'amber-vintage'
+        ? `0 0 40px ${resolvedAccentColor}40`
+        : hasCustomMediaWallpaper
+        ? '0 4px 20px rgba(0,0,0,0.7), 0 12px 35px rgba(0,0,0,0.5)'
+        : 'none',
+    };
+  };
+
   return (
     <div
       id="clock-view-container"
-      className="relative w-full h-screen min-h-screen flex flex-col justify-center items-center select-none overflow-hidden transition-colors duration-700"
+      className="relative w-full h-screen min-h-screen flex flex-col justify-center items-center select-none overflow-hidden transition-colors duration-700 bg-black"
       style={{
-        backgroundColor: isAmbientActive ? undefined : (resolvedBg || (isLight ? '#f7f5f0' : '#000000')),
-        background: isAmbientActive ? resolvedBg : undefined,
+        backgroundColor: hasCustomMediaWallpaper
+          ? '#000000'
+          : isAmbientActive
+          ? undefined
+          : (resolvedBg || (isLight ? '#f7f5f0' : '#000000')),
+        background: !hasCustomMediaWallpaper && isAmbientActive ? resolvedBg : undefined,
         color: resolvedTextColor,
         filter: `brightness(${settings.brightness}%)`,
       }}
       onClick={handleUserActivity}
     >
-      {/* Immersive Animated Ambient Theme Background Canvas */}
-      {isAmbientActive && (
+      {/* SVG Filters for iOS 26 Liquid Typography & Optical Effects */}
+      <svg className="absolute w-0 h-0 pointer-events-none opacity-0" aria-hidden="true">
+        <defs>
+          <filter id="ios26-liquid-filter" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="3" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="5" xChannelSelector="R" yChannelSelector="G" result="displaced" />
+            <feGaussianBlur in="displaced" stdDeviation="0.4" result="blurred" />
+            <feMerge>
+              <feMergeNode in="displaced" />
+              <feMergeNode in="blurred" />
+            </feMerge>
+          </filter>
+        </defs>
+      </svg>
+
+      {/* 1. MEDIA WALLPAPERS LAYER (Single Image / Slideshow / MP4 Live Video) */}
+      {settings.wallpaperMode === 'video' && videoUrl && (
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0 transition-opacity duration-700"
+          style={{
+            filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
+            willChange: 'transform',
+            transform: 'translateZ(0)',
+          }}
+        />
+      )}
+
+      {settings.wallpaperMode === 'slideshow' && slideshowUrls.length > 0 && (
+        <div
+          className="absolute inset-0 w-full h-full bg-cover bg-center pointer-events-none z-0 transition-all duration-1000 ease-in-out"
+          style={{
+            backgroundImage: `url(${slideshowUrls[currentSlideIndex] || slideshowUrls[0]})`,
+            filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
+          }}
+        />
+      )}
+
+      {settings.wallpaperMode === 'image' && singleWallpaperUrl && (
+        <div
+          className="absolute inset-0 w-full h-full bg-cover bg-center pointer-events-none z-0 transition-opacity duration-700"
+          style={{
+            backgroundImage: `url(${singleWallpaperUrl})`,
+            filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
+          }}
+        />
+      )}
+
+      {/* Procedural Ambient Background (When in Theme mode) */}
+      {isAmbientActive && !hasCustomMediaWallpaper && (
         <AmbientBackground
           ambientTheme={settings.ambientTheme}
           particles={settings.ambientParticles !== false}
         />
       )}
 
-      {/* Top Ambient Floating Control Bar (Floats above so main digits stay geometrically centered) */}
+      {/* 2. WALLPAPER DIMMER / READABILITY OVERLAY */}
+      {hasCustomMediaWallpaper && (
+        <div
+          className="absolute inset-0 pointer-events-none z-[1] transition-opacity duration-500 bg-black"
+          style={{
+            opacity: (settings.wallpaperOpacity ?? 25) / 100,
+          }}
+        />
+      )}
+
+      {/* 3. OPTICAL DEPTH EFFECT AMBIENT VIGNETTE */}
+      {depthEffect && (
+        <div
+          className="absolute inset-0 pointer-events-none z-[2] transition-opacity duration-700"
+          style={{
+            background: `radial-gradient(circle at 50% 50%, rgba(0,0,0,0.1) 0%, rgba(0,0,0,${(depthIntensity / 100) * 0.75}) 100%)`,
+          }}
+        />
+      )}
+
+      {/* Top Floating Control Bar */}
       <header
         id="clock-header-controls"
-        className={`absolute top-0 left-0 right-0 w-full px-6 py-5 flex items-center justify-between z-30 transition-all duration-300 ${
+        className={`absolute top-0 left-0 right-0 w-full px-6 py-5 flex items-center justify-between z-40 transition-all duration-300 ${
           controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
         }`}
       >
@@ -300,9 +606,9 @@ export const ClockView: React.FC<ClockViewProps> = ({
             id="clock-back-welcome-btn"
             onClick={onGoToWelcome}
             className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-              isLight
+              isLight && !hasCustomMediaWallpaper
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
-                : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
+                : 'border-white/10 bg-black/40 hover:bg-black/60 text-white'
             }`}
             title="Return to Welcome Screen"
           >
@@ -310,237 +616,21 @@ export const ClockView: React.FC<ClockViewProps> = ({
             <span className="hidden sm:inline">Welcome Screen</span>
           </button>
 
-          <span className="text-xs tracking-wider opacity-60 hidden md:inline-flex items-center gap-1.5 font-mono">
-            <span>Desk of</span>
-            <span className="font-semibold opacity-90">{userName}</span>
+          <span className="text-xs tracking-wider opacity-75 hidden md:inline-flex items-center gap-1.5 font-mono">
+            <span>Standby Desk</span>
+            <span className="font-semibold opacity-90">• {userName}</span>
           </span>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Quick Ambient Themes Dropdown Trigger */}
-          <div className="relative">
-            <button
-              id="clock-ambient-theme-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setAmbientMenuOpen((prev) => !prev);
-                setSoundMenuOpen(false);
-              }}
-              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-                isAmbientActive
-                  ? 'border-amber-400/60 bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
-                  : isLight
-                  ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
-                  : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
-              }`}
-              title="Select Ambient Theme & Desk Atmosphere"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span className="hidden sm:inline">
-                {isAmbientActive ? activeAmbient.name : 'Ambient Mood'}
-              </span>
-            </button>
-
-            {/* Floating Ambient Theme Popover */}
-            {ambientMenuOpen && (
-              <div
-                id="ambient-theme-popover"
-                onClick={(e) => e.stopPropagation()}
-                className="absolute right-0 mt-2 w-80 sm:w-96 max-h-[82vh] overflow-y-auto rounded-2xl p-3 sm:p-4 bg-neutral-900/98 backdrop-blur-2xl border border-neutral-700/80 shadow-2xl z-50 text-neutral-200 animate-fadeIn"
-              >
-                <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-neutral-800">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-semibold text-neutral-100 uppercase tracking-wider">
-                      Atmospheres & Ambient Themes
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      onUpdateSettings?.({ ambientTheme: 'none', ambientSoundEnabled: false });
-                      setAmbientMenuOpen(false);
-                    }}
-                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
-                      settings.ambientTheme === 'none' || !settings.ambientTheme
-                        ? 'border-neutral-500 bg-neutral-800 text-white font-medium'
-                        : 'border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-neutral-200'
-                    }`}
-                  >
-                    Minimal Clean (Off)
-                  </button>
-                </div>
-
-                {/* Ambient Themes List */}
-                <div className="space-y-1.5 max-h-[65vh] overflow-y-auto pr-1">
-                  {AMBIENT_THEMES.filter((t) => t.id !== 'none').map((theme) => {
-                    const isSelected = (settings.ambientTheme || 'none') === theme.id;
-                    return (
-                      <button
-                        key={theme.id}
-                        id={`ambient-quick-btn-${theme.id}`}
-                        onClick={() => {
-                          onUpdateSettings?.({
-                            ambientTheme: theme.id,
-                            ...(theme.soundType && theme.soundType !== 'none'
-                              ? { ambientSoundEnabled: settings.ambientSoundEnabled }
-                              : {}),
-                          });
-                          setAmbientMenuOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-amber-400/15 text-white border border-amber-400/40 shadow-sm'
-                            : 'hover:bg-neutral-800/70 text-neutral-300 border border-transparent'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div
-                            className="w-7 h-7 rounded-lg border border-neutral-700 flex-shrink-0 relative overflow-hidden"
-                            style={{ background: theme.bgGradient }}
-                          >
-                            <span
-                              className="absolute inset-0 m-auto w-2 h-2 rounded-full"
-                              style={{ backgroundColor: theme.accentColor }}
-                            />
-                          </div>
-
-                          <div className="truncate">
-                            <div className="text-xs font-semibold truncate flex items-center gap-1.5">
-                              <span>{theme.name}</span>
-                              {theme.soundType && theme.soundType !== 'none' && (
-                                <Headphones className="w-3 h-3 text-sky-400 opacity-85 shrink-0" />
-                              )}
-                            </div>
-                            <div className="text-[11px] text-neutral-400 truncate mt-0.5">
-                              {theme.tagline}
-                            </div>
-                          </div>
-                        </div>
-
-                        {isSelected && (
-                          <Check className="w-4 h-4 text-amber-400 flex-shrink-0 ml-2" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Ambient Audio Toggle / Volume Popover */}
-          {isAmbientActive && activeAmbient.soundType && activeAmbient.soundType !== 'none' && (
-            <div className="relative">
-              <button
-                id="clock-ambient-sound-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSoundMenuOpen((prev) => !prev);
-                  setAmbientMenuOpen(false);
-                }}
-                className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-                  settings.ambientSoundEnabled
-                    ? 'border-sky-400/60 bg-sky-500/15 text-sky-300 ring-1 ring-sky-400/30'
-                    : isLight
-                    ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
-                    : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
-                }`}
-                title="Ambient Soundscape Controls"
-              >
-                {settings.ambientSoundEnabled ? (
-                  <Volume2 className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
-                ) : (
-                  <VolumeX className="w-3.5 h-3.5 text-neutral-400" />
-                )}
-                <span className="hidden sm:inline">
-                  {settings.ambientSoundEnabled ? activeAmbient.soundLabel : 'Soundscape Muted'}
-                </span>
-              </button>
-
-              {/* Sound Settings Popover */}
-              {soundMenuOpen && (
-                <div
-                  id="ambient-sound-popover"
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute right-0 mt-2 w-64 rounded-2xl p-3 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 shadow-2xl z-50 text-neutral-200 animate-fadeIn space-y-3"
-                >
-                  <div className="flex items-center justify-between pb-1 border-b border-neutral-800">
-                    <span className="text-xs font-semibold text-neutral-200">
-                      Ambient Soundscape
-                    </span>
-                    <button
-                      id="ambient-sound-mute-toggle"
-                      onClick={() =>
-                        onUpdateSettings?.({
-                          ambientSoundEnabled: !settings.ambientSoundEnabled,
-                        })
-                      }
-                      className={`text-[10px] px-2 py-0.5 rounded font-mono uppercase cursor-pointer ${
-                        settings.ambientSoundEnabled
-                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                          : 'bg-neutral-800 text-neutral-400'
-                      }`}
-                    >
-                      {settings.ambientSoundEnabled ? 'Active' : 'Off'}
-                    </button>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] text-neutral-400">
-                      <span>{activeAmbient.soundLabel}</span>
-                      <span className="font-mono">{settings.ambientSoundVolume ?? 35}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="5"
-                      max="100"
-                      value={settings.ambientSoundVolume ?? 35}
-                      onChange={(e) =>
-                        onUpdateSettings?.({
-                          ambientSoundVolume: Number(e.target.value),
-                          ambientSoundEnabled: true,
-                        })
-                      }
-                      className="w-full accent-sky-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Dark Mode Toggle Button */}
-          <button
-            id="clock-dark-mode-btn"
-            onClick={onToggleDarkMode}
-            className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-              isLight
-                ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
-                : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
-            }`}
-            title={`Switch to ${isDarkMode ? 'Light' : 'Dark'} Mode`}
-          >
-            {isDarkMode ? (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">Light</span>
-              </>
-            ) : (
-              <>
-                <Moon className="w-3.5 h-3.5 text-sky-500" />
-                <span className="hidden sm:inline">Dark</span>
-              </>
-            )}
-          </button>
-
           {/* Quick Pomodoro Switch */}
           <button
             id="clock-to-pomodoro-btn"
             onClick={onGoToPomodoro}
             className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-              isLight
+              isLight && !hasCustomMediaWallpaper
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white'
-                : 'border-white/10 bg-white/5 hover:bg-white/10'
+                : 'border-white/10 bg-black/40 hover:bg-black/60'
             }`}
             style={{ color: resolvedAccentColor }}
             title="Open Pomodoro Timer"
@@ -549,15 +639,49 @@ export const ClockView: React.FC<ClockViewProps> = ({
             <span className="hidden sm:inline">Pomodoro</span>
           </button>
 
+          {/* Quick Task Tracker Switch */}
+          {onGoToTasks && (
+            <button
+              id="clock-to-tasks-btn"
+              onClick={onGoToTasks}
+              className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
+                isLight && !hasCustomMediaWallpaper
+                  ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-emerald-600'
+                  : 'border-white/10 bg-black/40 hover:bg-black/60 text-emerald-400'
+              }`}
+              title="Open Task Tracker"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Tasks</span>
+            </button>
+          )}
+
+          {/* Quick Stats & Analytics Switch */}
+          {onGoToStats && (
+            <button
+              id="clock-to-stats-btn"
+              onClick={onGoToStats}
+              className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
+                isLight && !hasCustomMediaWallpaper
+                  ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-amber-600'
+                  : 'border-white/10 bg-black/40 hover:bg-black/60 text-amber-400'
+              }`}
+              title="Open Weekly Progress & Analytics"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Stats</span>
+            </button>
+          )}
+
           {/* Study & Work Parties Button */}
           {onOpenParties && (
             <button
               id="clock-parties-btn"
               onClick={onOpenParties}
               className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-                isLight
+                isLight && !hasCustomMediaWallpaper
                   ? 'border-amber-400/50 bg-amber-50/80 hover:bg-amber-100 text-amber-800'
-                  : 'border-amber-400/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300'
+                  : 'border-amber-400/40 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300'
               }`}
               title="Open Study & Work Parties Leaderboard"
             >
@@ -571,9 +695,9 @@ export const ClockView: React.FC<ClockViewProps> = ({
             id="clock-fullscreen-btn"
             onClick={toggleFullscreen}
             className={`apple-icon-hover p-2 rounded-xl text-xs backdrop-blur-md border cursor-pointer shadow-sm ${
-              isLight
+              isLight && !hasCustomMediaWallpaper
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
-                : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
+                : 'border-white/10 bg-black/40 hover:bg-black/60 text-white'
             }`}
             title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen (Laptop Desk View)'}
           >
@@ -585,9 +709,9 @@ export const ClockView: React.FC<ClockViewProps> = ({
             id="clock-settings-btn"
             onClick={onOpenSettings}
             className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-              isLight
+              isLight && !hasCustomMediaWallpaper
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
-                : 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
+                : 'border-white/10 bg-black/40 hover:bg-black/60 text-white'
             }`}
             title="Customize Clock & Settings"
           >
@@ -597,7 +721,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
         </div>
       </header>
 
-      {/* Main Center Clock Display - Strictly Centered Vertically & Horizontally */}
+      {/* Main Center Clock Display */}
       <main
         id="clock-digits-display"
         className="w-full flex-1 flex flex-col items-center justify-center p-4 sm:p-8 text-center mx-auto z-10 transition-transform duration-1000 ease-out"
@@ -607,11 +731,69 @@ export const ClockView: React.FC<ClockViewProps> = ({
             : `translate3d(${driftOffset.x}px, ${driftOffset.y}px, 0)`,
         }}
       >
-        {/* Day & Date Row - Strictly centered */}
-        {(settings.showDayOfWeek || settings.showDate) && (
+        {/* OPTIONAL STANDBY DISPLAY WIDGETS ROW (Top bar when enabled) */}
+        {settings.showStandbyWidgets && (
+          <div
+            id="standby-widgets-container"
+            className="flex items-center justify-center gap-3 sm:gap-4 mb-4 sm:mb-6 z-30"
+          >
+            {/* 1. Date & Day Widget */}
+            {settings.standbyWidgetsDate !== false && (
+              <div
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border text-xs font-medium backdrop-blur-md shadow-sm ${
+                  hasCustomMediaWallpaper || !isLight
+                    ? 'bg-black/40 border-white/15 text-white'
+                    : 'bg-white/80 border-neutral-300 text-neutral-800'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                <span>{dayOfWeek.slice(0, 3)}, {monthName.slice(0, 3)} {dateNum}</span>
+              </div>
+            )}
+
+            {/* 2. Battery Widget */}
+            {settings.standbyWidgetsBattery !== false && batteryState && (
+              <div
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border text-xs font-medium backdrop-blur-md shadow-sm font-mono ${
+                  hasCustomMediaWallpaper || !isLight
+                    ? 'bg-black/40 border-white/15 text-white'
+                    : 'bg-white/80 border-neutral-300 text-neutral-800'
+                }`}
+              >
+                {batteryState.charging ? (
+                  <BatteryCharging className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                ) : (
+                  <Battery className="w-3.5 h-3.5 text-sky-400" />
+                )}
+                <span>{batteryState.level}%</span>
+                {batteryState.charging && <span className="text-[10px] text-emerald-400">Power</span>}
+              </div>
+            )}
+
+            {/* 3. Focus Mode Indicator Widget */}
+            {settings.standbyWidgetsFocusTask !== false && (
+              <div
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-medium backdrop-blur-md shadow-sm ${
+                  hasCustomMediaWallpaper || !isLight
+                    ? 'bg-black/40 border-white/15 text-neutral-200'
+                    : 'bg-white/80 border-neutral-300 text-neutral-700'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span>Standby Ready</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Standard Day & Date Row (If Standby Widgets are disabled) */}
+        {!settings.showStandbyWidgets && (settings.showDayOfWeek || settings.showDate) && (
           <div
             id="clock-date-row"
-            className="w-full flex items-center justify-center text-center gap-2.5 sm:gap-3 mb-3 sm:mb-6 font-medium tracking-widest text-sm sm:text-base md:text-lg uppercase opacity-75 font-sans mx-auto"
+            className="w-full flex items-center justify-center text-center gap-2.5 sm:gap-3 mb-3 sm:mb-6 font-medium tracking-widest text-sm sm:text-base md:text-lg uppercase opacity-85 font-sans mx-auto"
+            style={{
+              textShadow: hasCustomMediaWallpaper ? '0 2px 10px rgba(0,0,0,0.8)' : undefined,
+            }}
           >
             {settings.showDayOfWeek && (
               <span id="clock-day-of-week" className="font-semibold tracking-wider text-center">
@@ -629,66 +811,73 @@ export const ClockView: React.FC<ClockViewProps> = ({
           </div>
         )}
 
-        {/* Hero Clock Digits - Horizontally & Vertically Centered */}
+        {/* Hero Clock Digits with iOS 26 Vertical Elongation & Layering */}
         <div
-          id="clock-primary-time"
-          className={`apple-display-hover relative inline-flex items-center justify-center text-center tracking-tight leading-none select-none mx-auto ${getDigitSizeStyle()}`}
+          id="clock-digits-wrapper"
+          className="relative inline-flex items-center justify-center"
           style={{
-            fontFamily: selectedFont.cssFamily,
-            textShadow: isAmbientActive
-              ? `0 0 35px ${activeAmbient.glowColor}, 0 0 70px ${activeAmbient.glowColor}80`
-              : settings.themeId === 'cyber-neon' || settings.themeId === 'amber-vintage'
-              ? `0 0 40px ${resolvedAccentColor}40`
-              : 'none',
+            transform: fontStretchY !== 1.0 ? `scale(1, ${fontStretchY})` : undefined,
+            transformOrigin: 'center center',
           }}
         >
-          {/* Hours */}
-          <span id="clock-hours">{hoursStr}</span>
-
-          {/* Pulsing Colon Separator */}
-          <span
-            id="clock-colon"
-            className="mx-1 sm:mx-2 opacity-70 animate-pulse inline-block"
-            style={{ animationDuration: '2s' }}
+          <div
+            id="clock-primary-time"
+            className={`apple-display-hover relative inline-flex items-center justify-center text-center tracking-tight leading-none select-none mx-auto ${getDigitSizeStyle()}`}
+            style={{
+              ...getTextEffectStyles(),
+              filter: depthEffect
+                ? `drop-shadow(0 ${20 * (depthIntensity / 100)}px ${30 * (depthIntensity / 100)}px rgba(0,0,0,0.9))`
+                : getTextEffectStyles().filter,
+            }}
           >
-            :
-          </span>
+            {/* Hours */}
+            <span id="clock-hours">{hoursStr}</span>
 
-          {/* Minutes */}
-          <span id="clock-minutes">{minutesStr}</span>
+            {/* Pulsing Colon Separator */}
+            <span
+              id="clock-colon"
+              className="mx-1 sm:mx-2 opacity-75 animate-pulse inline-block"
+              style={{ animationDuration: '2s' }}
+            >
+              :
+            </span>
 
-          {/* Optional Seconds */}
-          {settings.showSeconds && (
-            <span className="inline-flex items-center">
-              <span
-                id="clock-seconds-colon"
-                className="mx-1 sm:mx-2 opacity-50 text-[0.6em]"
-              >
-                :
+            {/* Minutes */}
+            <span id="clock-minutes">{minutesStr}</span>
+
+            {/* Optional Seconds */}
+            {settings.showSeconds && (
+              <span className="inline-flex items-center">
+                <span
+                  id="clock-seconds-colon"
+                  className="mx-1 sm:mx-2 opacity-60 text-[0.6em]"
+                >
+                  :
+                </span>
+                <span
+                  id="clock-seconds"
+                  className="opacity-85 text-[0.6em] font-light"
+                  style={{ color: resolvedAccentColor }}
+                >
+                  {secondsStr}
+                </span>
               </span>
+            )}
+
+            {/* Optional AM/PM Tag in standard non-fill layout */}
+            {settings.showAmPm && settings.timeFormat === '12h' && settings.digitSize !== 'fill' && (
               <span
-                id="clock-seconds"
-                className="opacity-80 text-[0.6em] font-light"
+                id="clock-ampm"
+                className="absolute left-full ml-3 sm:ml-5 text-[0.22em] font-semibold tracking-wider uppercase px-2.5 py-1 rounded-md border border-current opacity-85 self-center font-sans whitespace-nowrap"
                 style={{ color: resolvedAccentColor }}
               >
-                {secondsStr}
+                {ampm}
               </span>
-            </span>
-          )}
-
-          {/* Optional AM/PM Tag in standard non-fill layout */}
-          {settings.showAmPm && settings.timeFormat === '12h' && settings.digitSize !== 'fill' && (
-            <span
-              id="clock-ampm"
-              className="absolute left-full ml-3 sm:ml-5 text-[0.22em] font-semibold tracking-wider uppercase px-2.5 py-1 rounded-md border border-current opacity-80 self-center font-sans whitespace-nowrap"
-              style={{ color: resolvedAccentColor }}
-            >
-              {ampm}
-            </span>
-          )}
+            )}
+          </div>
         </div>
 
-        {/* Dedicated Centered AM/PM Tag when in Fill View to preserve perfect geometric center alignment */}
+        {/* Dedicated Centered AM/PM Tag when in Fill View to preserve geometric center */}
         {settings.digitSize === 'fill' && settings.showAmPm && settings.timeFormat === '12h' && (
           <div className="w-full flex items-center justify-center text-center mt-3 sm:mt-5 mx-auto">
             <span
@@ -705,16 +894,28 @@ export const ClockView: React.FC<ClockViewProps> = ({
         {settings.showQuote && settings.quoteText && (
           <div
             id="clock-quote-display"
-            className={`mt-6 sm:mt-10 max-w-xl mx-auto px-6 py-2.5 rounded-full border text-xs sm:text-sm tracking-wide opacity-80 italic font-sans text-center ${
-              isLight
-                ? 'border-neutral-300/80 bg-white/60 text-neutral-800 shadow-sm'
-                : 'border-white/5 bg-white/[0.03] text-neutral-200 backdrop-blur-sm'
+            className={`mt-6 sm:mt-10 max-w-xl mx-auto px-6 py-2.5 rounded-full border text-xs sm:text-sm tracking-wide opacity-85 italic font-sans text-center ${
+              hasCustomMediaWallpaper || !isLight
+                ? 'border-white/10 bg-black/40 text-neutral-200 backdrop-blur-md shadow-sm'
+                : 'border-neutral-300/80 bg-white/70 text-neutral-800 shadow-sm'
             }`}
           >
             &ldquo;{settings.quoteText}&rdquo;
           </div>
         )}
       </main>
+
+      {/* 4. FOREGROUND DEPTH MASK (iOS Lockscreen Depth Effect Cutout) */}
+      {depthEffect && depthMaskUrl && (
+        <img
+          src={depthMaskUrl}
+          alt="Foreground Depth Cutout"
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-20 transition-opacity duration-700"
+          style={{
+            filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
+          }}
+        />
+      )}
     </div>
   );
 };

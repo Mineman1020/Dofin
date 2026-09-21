@@ -14,13 +14,16 @@ import {
   Plus,
   LogIn,
   Sparkles,
+  CheckCircle2,
+  Check,
+  BarChart3,
 } from 'lucide-react';
-import { ClockSettings, PomodoroSettings } from '../types';
+import { ClockSettings, PomodoroSettings, ViewMode } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS } from '../utils/constants';
 
 interface WelcomeScreenProps {
   userName: string;
-  onSelectMode: (mode: 'clock' | 'pomodoro') => void;
+  onSelectMode: (mode: ViewMode) => void;
   onOpenSettings: () => void;
   onOpenNameModal: () => void;
   onOpenParties?: (tab?: 'leaderboard' | 'my-parties' | 'create' | 'join') => void;
@@ -109,7 +112,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       {/* Top Navbar - Full screen edge-to-edge width */}
       <header
         id="welcome-navbar"
-        className={`w-full px-6 sm:px-10 lg:px-16 py-4 sm:py-5 flex items-center justify-between z-20 border-b transition-colors ${
+        className={`w-full px-4 sm:px-8 lg:px-12 py-2.5 sm:py-3 flex items-center justify-between z-20 border-b transition-colors ${
           isDarkMode
             ? 'border-neutral-900 bg-neutral-950/70'
             : 'border-neutral-200/80 bg-white/70'
@@ -150,23 +153,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             )}
           </button>
 
-          {/* Study & Work Parties Button in Navbar */}
-          {onOpenParties && (
-            <button
-              id="welcome-parties-btn"
-              onClick={() => onOpenParties('my-parties')}
-              className={`apple-hover flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer shadow-sm ${
-                isDarkMode
-                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
-                  : 'border-amber-500/40 bg-amber-50 text-amber-800 hover:bg-amber-100'
-              }`}
-              title="Open Study & Work Parties and Leaderboard"
-            >
-              <Users className="w-3.5 h-3.5 text-amber-500" />
-              <span>Parties</span>
-            </button>
-          )}
-
           {/* User profile pill */}
           <button
             id="welcome-user-profile-btn"
@@ -199,11 +185,11 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         </div>
       </header>
 
-      {/* Hero Welcome Banner */}
-      <main className="w-full max-w-7xl mx-auto px-6 sm:px-10 lg:px-16 py-8 sm:py-12 flex-1 flex flex-col justify-center z-10">
-        <div className="text-center space-y-3 mb-8 sm:mb-12">
+      {/* Main Container - Balanced 2x2 Grid with comfortable, clean proportions */}
+      <main className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex-1 flex flex-col justify-center z-10">
+        <div className="text-center space-y-1.5 sm:space-y-2 mb-4 sm:mb-5">
           <div
-            className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs ${
+            className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-medium ${
               isDarkMode
                 ? 'bg-neutral-900/80 border-neutral-800 text-neutral-400'
                 : 'bg-white border-neutral-300 text-neutral-600 shadow-sm'
@@ -214,8 +200,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </div>
 
           <div className="flex items-center justify-center gap-3">
-            <GreetingIcon className={`w-8 h-8 sm:w-10 sm:h-10 ${iconColor}`} />
-            <h2 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight">
+            <GreetingIcon className={`w-7 h-7 sm:w-9 sm:h-9 ${iconColor}`} />
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight">
               {greeting},{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-amber-600 dark:from-amber-400 dark:to-amber-200">
                 {userName}
@@ -223,32 +209,42 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </h2>
           </div>
 
-          <p className="text-sm sm:text-lg text-neutral-500 dark:text-neutral-400 max-w-xl mx-auto font-light leading-relaxed">
+          <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 max-w-xl mx-auto font-light leading-relaxed">
             Choose your mode below to get started.
           </p>
         </div>
 
-        {/* The Two Main Option Cards: 1. Clock & 2. Pomodoro (Expansive Full Width) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12 w-full max-w-6xl mx-auto">
+        {/* The Four Main Options arranged in a clean, balanced 2x2 Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-4.5 w-full max-w-5xl mx-auto">
           {/* OPTION 1: DESK CLOCK */}
           <div
             id="welcome-clock-card"
             onClick={() => onSelectMode('clock')}
-            className={`apple-card-hover group relative rounded-3xl p-8 sm:p-10 flex flex-col justify-between cursor-pointer shadow-2xl overflow-hidden border min-h-[440px] sm:min-h-[470px] ${
+            className={`apple-card-hover group relative rounded-3xl p-5 sm:p-5.5 flex flex-col justify-between cursor-pointer shadow-lg overflow-hidden border min-h-[180px] sm:min-h-[195px] ${
               isDarkMode
-                ? 'bg-neutral-900/70 hover:bg-neutral-900/95 border-neutral-800 hover:border-amber-500/60 hover:shadow-amber-500/15'
+                ? 'bg-neutral-900/75 hover:bg-neutral-900/95 border-neutral-800 hover:border-amber-500/60 hover:shadow-amber-500/15'
                 : 'bg-white hover:bg-neutral-50/95 border-neutral-200/90 hover:border-amber-500/60 hover:shadow-amber-500/15'
             }`}
           >
-            <div className="absolute top-0 right-0 w-44 h-44 bg-amber-500/10 rounded-full blur-3xl group-hover:bg-amber-500/25 transition-all pointer-events-none" />
+            <div className="absolute top-0 right-0 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all pointer-events-none" />
 
             <div>
-              <div className="flex items-center justify-between mb-5">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-500 dark:text-amber-400 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
-                  <Clock className="w-7 h-7 sm:w-8 sm:h-8" />
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-500 dark:text-amber-400 flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-bold group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors leading-tight">
+                      Desk Clock
+                    </h3>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 block line-clamp-1">
+                      Distraction-free ambient clock & curated typography
+                    </span>
+                  </div>
                 </div>
                 <span
-                  className={`text-xs font-mono font-bold px-3 py-1.5 rounded-full border ${
+                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full border shrink-0 ${
                     isDarkMode
                       ? 'bg-neutral-800 text-neutral-300 border-neutral-700'
                       : 'bg-neutral-100 text-neutral-700 border-neutral-300'
@@ -258,42 +254,34 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </span>
               </div>
 
-              <h3 className="text-2xl sm:text-3xl font-extrabold mb-3 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
-                Desk Clock
-              </h3>
-
-              <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed mb-6">
-                Turn your laptop into an ambient, distraction-free desk clock. Fully centered typography, customizable digits, OLED midnight/vintage colors, and hourly chimes.
-              </p>
-
-              {/* Mini Preview Box */}
+              {/* Clean Preview Box */}
               <div
-                className={`p-4 sm:p-5 rounded-2xl border mb-6 flex items-baseline justify-center gap-2 transition-colors ${
+                className={`py-2 px-3.5 rounded-2xl border mb-3 flex items-baseline justify-center gap-1.5 transition-colors ${
                   isDarkMode
-                    ? 'border-neutral-800 bg-black/70'
-                    : 'border-neutral-200 bg-neutral-100/90 shadow-inner'
+                    ? 'border-neutral-800 bg-black/60'
+                    : 'border-neutral-200 bg-neutral-100/85'
                 }`}
                 style={{ fontFamily: selectedFont.cssFamily }}
               >
-                <span className="text-3xl sm:text-4xl font-black tracking-tight">
+                <span className="text-2xl sm:text-3xl font-black tracking-tight leading-none">
                   {String(displayH).padStart(2, '0')}:{displayM}
                 </span>
                 {clockSettings.showSeconds && (
-                  <span className="text-lg text-amber-500 dark:text-amber-400 font-bold">:{displayS}</span>
+                  <span className="text-sm text-amber-500 dark:text-amber-400 font-bold leading-none">:{displayS}</span>
                 )}
                 {clockSettings.showAmPm && (
-                  <span className="text-xs text-neutral-400 ml-1 font-semibold">{ampm}</span>
+                  <span className="text-xs text-neutral-400 ml-1.5 font-semibold leading-none">{ampm}</span>
                 )}
               </div>
             </div>
 
-            <div className="pt-3 flex items-center justify-between border-t border-neutral-200/60 dark:border-neutral-800/80">
-              <span className="text-xs text-neutral-500 font-mono">
-                Font: {selectedFont.name}
+            <div className="pt-2.5 flex items-center justify-between border-t border-neutral-200/60 dark:border-neutral-800/70">
+              <span className="text-xs text-neutral-500 font-mono truncate max-w-[140px]">
+                {selectedFont.name}
               </span>
-              <div className="flex items-center gap-2 text-sm font-bold text-amber-500 dark:text-amber-400 group-hover:translate-x-1.5 transition-transform">
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-amber-500 dark:text-amber-400 group-hover:translate-x-1.5 transition-transform">
                 <span>Launch Clock</span>
-                <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                <ArrowRight className="w-4 h-4" />
               </div>
             </div>
           </div>
@@ -302,21 +290,31 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <div
             id="welcome-pomodoro-card"
             onClick={() => onSelectMode('pomodoro')}
-            className={`apple-card-hover group relative rounded-3xl p-8 sm:p-10 flex flex-col justify-between cursor-pointer shadow-2xl overflow-hidden border min-h-[440px] sm:min-h-[470px] ${
+            className={`apple-card-hover group relative rounded-3xl p-5 sm:p-5.5 flex flex-col justify-between cursor-pointer shadow-lg overflow-hidden border min-h-[180px] sm:min-h-[195px] ${
               isDarkMode
-                ? 'bg-neutral-900/70 hover:bg-neutral-900/95 border-neutral-800 hover:border-sky-500/60 hover:shadow-sky-500/15'
+                ? 'bg-neutral-900/75 hover:bg-neutral-900/95 border-neutral-800 hover:border-sky-500/60 hover:shadow-sky-500/15'
                 : 'bg-white hover:bg-neutral-50/95 border-neutral-200/90 hover:border-sky-500/60 hover:shadow-sky-500/15'
             }`}
           >
-            <div className="absolute top-0 right-0 w-44 h-44 bg-sky-500/10 rounded-full blur-3xl group-hover:bg-sky-500/25 transition-all pointer-events-none" />
+            <div className="absolute top-0 right-0 w-36 h-36 bg-sky-500/10 rounded-full blur-2xl group-hover:bg-sky-500/20 transition-all pointer-events-none" />
 
             <div>
-              <div className="flex items-center justify-between mb-5">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-sky-500 dark:text-sky-400 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
-                  <Timer className="w-7 h-7 sm:w-8 sm:h-8" />
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-sky-500 dark:text-sky-400 flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shrink-0">
+                    <Timer className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-bold group-hover:text-sky-600 dark:group-hover:text-sky-300 transition-colors leading-tight">
+                      Pomodoro Focus
+                    </h3>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 block line-clamp-1">
+                      Timed work intervals, breaks & alerts
+                    </span>
+                  </div>
                 </div>
                 <span
-                  className={`text-xs font-mono font-bold px-3 py-1.5 rounded-full border ${
+                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full border shrink-0 ${
                     isDarkMode
                       ? 'bg-neutral-800 text-neutral-300 border-neutral-700'
                       : 'bg-neutral-100 text-neutral-700 border-neutral-300'
@@ -326,38 +324,30 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </span>
               </div>
 
-              <h3 className="text-2xl sm:text-3xl font-extrabold mb-3 group-hover:text-sky-600 dark:group-hover:text-sky-300 transition-colors">
-                Pomodoro Focus Timer
-              </h3>
-
-              <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed mb-6">
-                Organize work with a task list, interval assignments, custom audio alerts, and restorative breaks to learn things effectively on time.
-              </p>
-
-              {/* Mini Preview Box */}
+              {/* Clean Preview Box */}
               <div
-                className={`p-4 sm:p-5 rounded-2xl border mb-6 flex items-center justify-around text-xs sm:text-sm font-mono ${
+                className={`py-2 px-3.5 rounded-2xl border mb-3 flex items-center justify-around text-xs font-mono transition-colors ${
                   isDarkMode
-                    ? 'border-neutral-800 bg-black/70'
-                    : 'border-neutral-200 bg-neutral-100/90 shadow-inner'
+                    ? 'border-neutral-800 bg-black/60'
+                    : 'border-neutral-200 bg-neutral-100/85'
                 }`}
               >
-                <div className="text-center">
-                  <span className="text-[11px] text-neutral-500 block">Work</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-neutral-400">Work</span>
                   <span className="font-bold text-amber-500 dark:text-amber-400 text-sm sm:text-base">
                     {pomodoroSettings.workMinutes}m
                   </span>
                 </div>
-                <div className="h-5 w-px bg-neutral-300 dark:bg-neutral-800" />
-                <div className="text-center">
-                  <span className="text-[11px] text-neutral-500 block">Short Break</span>
+                <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-800" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-neutral-400">Short</span>
                   <span className="font-bold text-sky-500 dark:text-sky-400 text-sm sm:text-base">
                     {pomodoroSettings.shortBreakMinutes}m
                   </span>
                 </div>
-                <div className="h-5 w-px bg-neutral-300 dark:bg-neutral-800" />
-                <div className="text-center">
-                  <span className="text-[11px] text-neutral-500 block">Long Break</span>
+                <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-800" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-neutral-400">Long</span>
                   <span className="font-bold text-emerald-500 dark:text-emerald-400 text-sm sm:text-base">
                     {pomodoroSettings.longBreakMinutes}m
                   </span>
@@ -365,136 +355,225 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               </div>
             </div>
 
-            <div className="pt-3 flex items-center justify-between border-t border-neutral-200/60 dark:border-neutral-800/80">
-              <span className="text-xs text-neutral-500 font-mono">
-                Task List & Sound Alerts
+            <div className="pt-2.5 flex items-center justify-between border-t border-neutral-200/60 dark:border-neutral-800/70">
+              <span className="text-xs text-neutral-500 font-mono truncate max-w-[140px]">
+                Interval Engine
               </span>
-              <div className="flex items-center gap-2 text-sm font-bold text-sky-500 dark:text-sky-400 group-hover:translate-x-1.5 transition-transform">
-                <span>Launch Pomodoro</span>
-                <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-sky-500 dark:text-sky-400 group-hover:translate-x-1.5 transition-transform">
+                <span>Launch Timer</span>
+                <ArrowRight className="w-4 h-4" />
+              </div>
+            </div>
+          </div>
+
+          {/* OPTION 3: TASK TRACKER */}
+          <div
+            id="welcome-task-tracker-card"
+            onClick={() => onSelectMode('tasks')}
+            className={`apple-card-hover group relative rounded-3xl p-5 sm:p-5.5 flex flex-col justify-between cursor-pointer shadow-lg overflow-hidden border min-h-[180px] sm:min-h-[195px] ${
+              isDarkMode
+                ? 'bg-neutral-900/75 hover:bg-neutral-900/95 border-neutral-800 hover:border-emerald-500/60 hover:shadow-emerald-500/15'
+                : 'bg-white hover:bg-neutral-50/95 border-neutral-200/90 hover:border-emerald-500/60 hover:shadow-emerald-500/15'
+            }`}
+          >
+            <div className="absolute top-0 right-0 w-36 h-36 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all pointer-events-none" />
+
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 dark:text-emerald-400 flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shrink-0">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-bold group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors leading-tight">
+                      Task Tracker
+                    </h3>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 block line-clamp-1">
+                      Standalone to-dos, priorities & projects
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full border shrink-0 ${
+                    isDarkMode
+                      ? 'bg-neutral-800 text-emerald-400 border-neutral-700'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  }`}
+                >
+                  Option 3
+                </span>
+              </div>
+
+              {/* Clean Preview Box */}
+              <div
+                className={`py-2 px-3.5 rounded-2xl border mb-3 flex items-center justify-between gap-3 text-xs transition-colors ${
+                  isDarkMode
+                    ? 'border-neutral-800 bg-black/60'
+                    : 'border-neutral-200 bg-neutral-100/85'
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-4 h-4 rounded bg-emerald-500 text-neutral-950 flex items-center justify-center shrink-0">
+                    <Check className="w-3 h-3 stroke-[3]" />
+                  </div>
+                  <span className="line-through text-neutral-400 text-xs truncate">Research assignment</span>
+                </div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-4 h-4 rounded border border-neutral-400 dark:border-neutral-600 shrink-0" />
+                  <span className="text-xs font-medium truncate">Submit presentation</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2.5 flex items-center justify-between border-t border-neutral-200/60 dark:border-neutral-800/70">
+              <span className="text-xs text-emerald-500 font-mono font-semibold">
+                Tasks Only
+              </span>
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-emerald-500 dark:text-emerald-400 group-hover:translate-x-1.5 transition-transform">
+                <span>Open Tracker</span>
+                <ArrowRight className="w-4 h-4" />
+              </div>
+            </div>
+          </div>
+
+          {/* OPTION 4: WEEKLY STATS */}
+          <div
+            id="welcome-stats-card"
+            onClick={() => onSelectMode('stats')}
+            className={`apple-card-hover group relative rounded-3xl p-5 sm:p-5.5 flex flex-col justify-between cursor-pointer shadow-lg overflow-hidden border min-h-[180px] sm:min-h-[195px] ${
+              isDarkMode
+                ? 'bg-neutral-900/75 hover:bg-neutral-900/95 border-neutral-800 hover:border-violet-500/60 hover:shadow-violet-500/15'
+                : 'bg-white hover:bg-neutral-50/95 border-neutral-200/90 hover:border-violet-500/60 hover:shadow-violet-500/15'
+            }`}
+          >
+            <div className="absolute top-0 right-0 w-36 h-36 bg-violet-500/10 rounded-full blur-2xl group-hover:bg-violet-500/20 transition-all pointer-events-none" />
+
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-violet-500/15 border border-violet-500/30 text-violet-500 dark:text-violet-400 flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shrink-0">
+                    <BarChart3 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-bold group-hover:text-violet-600 dark:group-hover:text-violet-300 transition-colors leading-tight">
+                      Weekly Stats
+                    </h3>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 block line-clamp-1">
+                      Daily velocity, focus time & charts
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full border shrink-0 ${
+                    isDarkMode
+                      ? 'bg-neutral-800 text-violet-400 border-neutral-700'
+                      : 'bg-violet-50 text-violet-700 border-violet-200'
+                  }`}
+                >
+                  Option 4
+                </span>
+              </div>
+
+              {/* Clean Preview Box */}
+              <div
+                className={`py-2 px-3.5 rounded-2xl border mb-3 flex items-center justify-between transition-colors ${
+                  isDarkMode
+                    ? 'border-neutral-800 bg-black/60'
+                    : 'border-neutral-200 bg-neutral-100/85'
+                }`}
+              >
+                <span className="text-xs text-neutral-400 font-mono">Velocity</span>
+                <div className="flex items-end gap-2 h-6 px-1">
+                  {[
+                    { day: 'M', h: '40%' },
+                    { day: 'T', h: '65%' },
+                    { day: 'W', h: '85%' },
+                    { day: 'T', h: '50%' },
+                    { day: 'F', h: '100%' },
+                    { day: 'S', h: '70%' },
+                    { day: 'S', h: '45%' },
+                  ].map((bar, i) => (
+                    <div key={i} className="flex flex-col items-center h-full justify-end">
+                      <div
+                        className="w-2 rounded-t bg-gradient-to-t from-violet-600 to-violet-400"
+                        style={{ height: bar.h }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <span className="text-xs text-violet-500 dark:text-violet-400 font-semibold font-mono">Recharts</span>
+              </div>
+            </div>
+
+            <div className="pt-2.5 flex items-center justify-between border-t border-neutral-200/60 dark:border-neutral-800/70">
+              <span className="text-xs text-violet-500 font-mono font-semibold">
+                Interactive Charts
+              </span>
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-violet-500 dark:text-violet-400 group-hover:translate-x-1.5 transition-transform">
+                <span>Open Stats</span>
+                <ArrowRight className="w-4 h-4" />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Study & Work Party Hub Section */}
+        {/* Study & Work Party Hub Bar - Balanced and clearly visible below the 2x2 grid */}
         {onOpenParties && (
           <div
-            id="welcome-party-hub-section"
-            className="w-full max-w-6xl mx-auto mt-8 sm:mt-10"
+            id="welcome-party-hub-compact"
+            className={`w-full max-w-5xl mx-auto mt-4 sm:mt-5 p-3 sm:p-3.5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs ${
+              isDarkMode
+                ? 'bg-neutral-900/70 border-neutral-800 text-neutral-300'
+                : 'bg-white/95 border-neutral-200 text-neutral-700 shadow-sm'
+            }`}
           >
-            <div
-              className={`rounded-3xl p-6 sm:p-8 border transition-all ${
-                isDarkMode
-                  ? 'bg-neutral-900/60 border-neutral-800'
-                  : 'bg-white/90 border-neutral-200 shadow-sm'
-              }`}
-            >
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-neutral-200/70 dark:border-neutral-800">
-                <div className="flex items-start sm:items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-500 flex items-center justify-center flex-shrink-0">
-                    <Users className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg sm:text-xl font-bold">Study & Work Parties</h3>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 flex items-center gap-1 font-semibold">
-                        <Trophy className="w-3 h-3" />
-                        Live Leaderboard
-                      </span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
-                      Create or join a focus room with friends using a shared party code. Compete on the Pomodoro focus leaderboard!
-                    </p>
-                  </div>
-                </div>
-
-                {/* Direct 'Your Parties' Action */}
-                <button
-                  id="welcome-your-parties-btn"
-                  onClick={() => onOpenParties('my-parties')}
-                  className={`apple-hover px-4 py-2.5 rounded-2xl border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-sm ${
-                    isDarkMode
-                      ? 'border-neutral-700 bg-neutral-800/90 hover:bg-neutral-700 text-neutral-100'
-                      : 'border-neutral-300 bg-neutral-100 hover:bg-neutral-200 text-neutral-900'
-                  }`}
-                >
-                  <Users className="w-4 h-4 text-amber-500" />
-                  <span>Your Parties</span>
-                  <ArrowRight className="w-3.5 h-3.5 opacity-60" />
-                </button>
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-500 flex items-center justify-center shrink-0">
+                <Users className="w-4 h-4" />
               </div>
+              <span className="font-semibold text-neutral-900 dark:text-white text-xs sm:text-sm">Study & Work Parties</span>
+              <span className="hidden md:inline text-neutral-500 dark:text-neutral-400 text-xs">
+                — Focus rooms with friends & live leaderboard
+              </span>
+            </div>
 
-              {/* The Two Party Choices: 1. Create Party, 2. Join Party */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-                {/* Choice 1: Create Party */}
-                <div
-                  id="welcome-create-party-card"
-                  onClick={() => onOpenParties('create')}
-                  className={`apple-card-hover group p-5 rounded-2xl border cursor-pointer flex items-center justify-between gap-4 ${
-                    isDarkMode
-                      ? 'bg-neutral-950/60 hover:bg-neutral-950 border-neutral-800 hover:border-amber-500/50'
-                      : 'bg-neutral-50/80 hover:bg-white border-neutral-200 hover:border-amber-500/50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center border border-amber-500/30 group-hover:scale-110 transition-transform duration-300">
-                      <Plus className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-500">
-                          Choice 1
-                        </span>
-                      </div>
-                      <h4 className="text-sm font-bold group-hover:text-amber-500 transition-colors">
-                        Create Party
-                      </h4>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-1">
-                        Name party, purpose (study/work), & get party code
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="w-8 h-8 rounded-full border border-neutral-300 dark:border-neutral-700 flex items-center justify-center text-neutral-400 group-hover:text-amber-500 group-hover:border-amber-500 transition-colors flex-shrink-0">
-                    <ArrowRight className="w-4 h-4" />
-                  </div>
-                </div>
-
-                {/* Choice 2: Join Party */}
-                <div
-                  id="welcome-join-party-card"
-                  onClick={() => onOpenParties('join')}
-                  className={`apple-card-hover group p-5 rounded-2xl border cursor-pointer flex items-center justify-between gap-4 ${
-                    isDarkMode
-                      ? 'bg-neutral-950/60 hover:bg-neutral-950 border-neutral-800 hover:border-sky-500/50'
-                      : 'bg-neutral-50/80 hover:bg-white border-neutral-200 hover:border-sky-500/50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-500 flex items-center justify-center border border-sky-500/30 group-hover:scale-110 transition-transform duration-300">
-                      <LogIn className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-sky-500">
-                          Choice 2
-                        </span>
-                      </div>
-                      <h4 className="text-sm font-bold group-hover:text-sky-500 transition-colors">
-                        Join Party
-                      </h4>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-1">
-                        Enter code to study with peers in the same room
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="w-8 h-8 rounded-full border border-neutral-300 dark:border-neutral-700 flex items-center justify-center text-neutral-400 group-hover:text-sky-500 group-hover:border-sky-500 transition-colors flex-shrink-0">
-                    <ArrowRight className="w-4 h-4" />
-                  </div>
-                </div>
-              </div>
+            <div className="flex items-center gap-2">
+              <button
+                id="welcome-create-party-pill"
+                onClick={() => onOpenParties('create')}
+                className={`apple-hover px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${
+                  isDarkMode
+                    ? 'border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-neutral-200'
+                    : 'border-neutral-300 bg-neutral-100 hover:bg-neutral-200 text-neutral-800'
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5 text-amber-500" />
+                <span>Create</span>
+              </button>
+              <button
+                id="welcome-join-party-pill"
+                onClick={() => onOpenParties('join')}
+                className={`apple-hover px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${
+                  isDarkMode
+                    ? 'border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300'
+                    : 'border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800'
+                }`}
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Join</span>
+              </button>
+              <button
+                id="welcome-my-parties-pill"
+                onClick={() => onOpenParties('my-parties')}
+                className={`apple-hover px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${
+                  isDarkMode
+                    ? 'border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-neutral-200'
+                    : 'border-neutral-300 bg-neutral-100 hover:bg-neutral-200 text-neutral-800'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                <span>Rooms</span>
+              </button>
             </div>
           </div>
         )}

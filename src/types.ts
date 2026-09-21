@@ -1,4 +1,4 @@
-export type ViewMode = 'welcome' | 'clock' | 'pomodoro';
+export type ViewMode = 'welcome' | 'clock' | 'pomodoro' | 'tasks' | 'stats';
 
 export type ClockFontFamily =
   | 'outfit'
@@ -67,6 +67,9 @@ export interface ThemePreset {
   isDark: boolean;
 }
 
+export type WallpaperMode = 'theme' | 'image' | 'slideshow' | 'video';
+export type ClockTextEffect = 'none' | 'liquid' | 'glass' | 'glow' | 'outline';
+
 export interface ClockSettings {
   themeId: string;
   customBg: string;
@@ -90,6 +93,26 @@ export interface ClockSettings {
   ambientSoundEnabled?: boolean;
   ambientSoundVolume?: number; // 0 to 100
   ambientParticles?: boolean;
+
+  // iOS 26 Standby Font & Appearance Adjustments
+  fontStretchY?: number; // Vertical elongation: 0.8 to 2.2 (default 1.0)
+  letterSpacing?: number; // Letter spacing: -4 to 16 px (default 0)
+  fontWeight?: '300' | '400' | '600' | '700' | '800' | '900'; // default '700'
+  textEffect?: ClockTextEffect; // 'none' | 'liquid' | 'glass' | 'glow' | 'outline'
+  depthEffect?: boolean; // Multi-layer optical depth against wallpaper
+  depthIntensity?: number; // 0 to 100
+
+  // Wallpaper Modes (Custom Image, Live MP4, Slideshow)
+  wallpaperMode?: WallpaperMode;
+  wallpaperOpacity?: number; // Wallpaper dimmer / dark overlay: 0 to 80 (default 25%)
+  wallpaperBlur?: number; // Wallpaper blur: 0 to 20 px (default 0)
+  slideshowIntervalSeconds?: number; // Interval for slideshow: 10, 30, 60, 300, 900 (default 30)
+
+  // Optional Standby Display Widgets
+  showStandbyWidgets?: boolean;
+  standbyWidgetsDate?: boolean;
+  standbyWidgetsBattery?: boolean;
+  standbyWidgetsFocusTask?: boolean;
 }
 
 export type SoundAlertChoice =
@@ -119,6 +142,7 @@ export interface PomodoroSettings {
   longBreakMinutes: number;
   longBreakInterval: number;
   autoStartBreaks: boolean;
+  autoStartLongBreaks?: boolean;
   autoStartPomodoros: boolean;
   soundAlerts: boolean;
   tickSound: boolean;

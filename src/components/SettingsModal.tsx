@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Palette,
@@ -22,6 +22,16 @@ import {
   Headphones,
   Flame,
   CloudRain,
+  Zap,
+  Image as ImageIcon,
+  Film,
+  Layers,
+  HardDrive,
+  BatteryCharging,
+  SlidersHorizontal,
+  Trash2,
+  RefreshCw,
+  LayoutTemplate,
 } from 'lucide-react';
 import {
   ClockSettings,
@@ -30,6 +40,8 @@ import {
   ClockDigitSize,
   SoundAlertChoice,
   AmbientThemeId,
+  WallpaperMode,
+  ClockTextEffect,
 } from '../types';
 import {
   THEME_PRESETS,
@@ -47,6 +59,12 @@ import {
   playTickSound,
 } from '../utils/audio';
 import { AmbientBackground } from './AmbientBackground';
+import {
+  saveWallpaperItem,
+  getWallpaperItem,
+  removeWallpaperItem,
+  getStorageUsage,
+} from '../utils/wallpaperStorage';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -86,6 +104,196 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const fileInputWorkRef = useRef<HTMLInputElement | null>(null);
   const fileInputBreakRef = useRef<HTMLInputElement | null>(null);
   const fileInputLongBreakRef = useRef<HTMLInputElement | null>(null);
+
+  // Standby Wallpaper & High-Capacity Offline Storage State
+  const [storageInfo, setStorageInfo] = useState<{
+    usedBytes: number;
+    formattedUsed: string;
+    quotaFormatted: string;
+    isHighCapacity: boolean;
+  } | null>(null);
+  const [wallpaperLoading, setWallpaperLoading] = useState<boolean>(false);
+  const [uploadStatusMsg, setUploadStatusMsg] = useState<string | null>(null);
+  const [slideshowCount, setSlideshowCount] = useState<number>(0);
+  const [hasCustomVideo, setHasCustomVideo] = useState<boolean>(false);
+  const [hasSingleImage, setHasSingleImage] = useState<boolean>(false);
+  const [hasDepthMask, setHasDepthMask] = useState<boolean>(false);
+  const [previewWallpaperUrl, setPreviewWallpaperUrl] = useState<string | null>(null);
+
+  const fileInputSingleRef = useRef<HTMLInputElement | null>(null);
+  const fileInputSlideshowRef = useRef<HTMLInputElement | null>(null);
+  const fileInputVideoRef = useRef<HTMLInputElement | null>(null);
+  const fileInputDepthMaskRef = useRef<HTMLInputElement | null>(null);
+
+  const refreshStorageStats = async () => {
+    try {
+      const stats = await getStorageUsage();
+      setStorageInfo(stats);
+
+      const single = await getWallpaperItem('single-image');
+      setHasSingleImage(!!single);
+      if (single && single.data) {
+        if (typeof single.data === 'string') {
+          setPreviewWallpaperUrl(single.data);
+        } else if (single.data instanceof Blob) {
+          setPreviewWallpaperUrl(URL.createObjectURL(single.data as Blob));
+        }
+      } else {
+        setPreviewWallpaperUrl(null);
+      }
+
+      const slides = await getWallpaperItem('slideshow-images');
+      if (slides && Array.isArray(slides.data)) {
+        setSlideshowCount(slides.data.length);
+      } else {
+        setSlideshowCount(0);
+      }
+
+      const video = await getWallpaperItem('live-video');
+      setHasCustomVideo(!!video);
+
+      const depth = await getWallpaperItem('depth-mask');
+      setHasDepthMask(!!depth);
+    } catch {
+      // Ignore
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      refreshStorageStats();
+    }
+  }, [isOpen]);
+
+  const handleSingleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setWallpaperLoading(true);
+    setUploadStatusMsg(`Saving photo "${file.name}" to high-capacity storage...`);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = reader.result as string;
+        await saveWallpaperItem('single-image', dataUrl, file.name);
+        setPreviewWallpaperUrl(dataUrl);
+        onUpdateClockSettings({
+          wallpaperMode: 'image',
+          customWallpaperName: file.name,
+        });
+        await refreshStorageStats();
+        setWallpaperLoading(false);
+        setUploadStatusMsg(`Wallpaper "${file.name}" saved!`);
+        setTimeout(() => setUploadStatusMsg(null), 3500);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setWallpaperLoading(false);
+      setUploadStatusMsg('Failed to save wallpaper.');
+    }
+  };
+
+  const handleSlideshowUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setWallpaperLoading(true);
+    setUploadStatusMsg(`Saving ${files.length} wallpapers to offline storage...`);
+    try {
+      const urls: string[] = [];
+      const fileList = Array.from(files);
+      for (const f of fileList) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(f);
+        });
+        urls.push(dataUrl);
+      }
+      await saveWallpaperItem('slideshow-images', urls, `${fileList.length} photos`);
+      onUpdateClockSettings({
+        wallpaperMode: 'slideshow',
+      });
+      await refreshStorageStats();
+      setWallpaperLoading(false);
+      setUploadStatusMsg(`Added ${urls.length} photos to slideshow!`);
+      setTimeout(() => setUploadStatusMsg(null), 3500);
+    } catch {
+      setWallpaperLoading(false);
+      setUploadStatusMsg('Failed to process slideshow files.');
+    }
+  };
+
+  const handleLiveVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setWallpaperLoading(true);
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    setUploadStatusMsg(`Saving live MP4 (${sizeMb} MB) to offline storage...`);
+    try {
+      await saveWallpaperItem('live-video', file, file.name);
+      onUpdateClockSettings({
+        wallpaperMode: 'video',
+        liveVideoName: file.name,
+      });
+      await refreshStorageStats();
+      setWallpaperLoading(false);
+      setUploadStatusMsg(`Live video "${file.name}" ready!`);
+      setTimeout(() => setUploadStatusMsg(null), 3500);
+    } catch {
+      setWallpaperLoading(false);
+      setUploadStatusMsg('Failed to save live video.');
+    }
+  };
+
+  const handleDepthMaskUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setWallpaperLoading(true);
+    setUploadStatusMsg('Saving foreground mask cutout...');
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = reader.result as string;
+        await saveWallpaperItem('depth-mask', dataUrl, file.name);
+        onUpdateClockSettings({
+          depthEffect: true,
+        });
+        await refreshStorageStats();
+        setWallpaperLoading(false);
+        setUploadStatusMsg('Depth effect foreground mask active!');
+        setTimeout(() => setUploadStatusMsg(null), 3500);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setWallpaperLoading(false);
+      setUploadStatusMsg('Failed to save depth mask.');
+    }
+  };
+
+  const handleClearWallpaper = async (type: 'single-image' | 'slideshow-images' | 'live-video' | 'depth-mask') => {
+    await removeWallpaperItem(type);
+    if (type === 'single-image') {
+      setPreviewWallpaperUrl(null);
+      onUpdateClockSettings({
+        customWallpaperName: undefined,
+        wallpaperMode: 'theme',
+      });
+    } else if (type === 'slideshow-images') {
+      onUpdateClockSettings({
+        wallpaperMode: 'theme',
+      });
+    } else if (type === 'live-video') {
+      onUpdateClockSettings({
+        liveVideoName: undefined,
+        wallpaperMode: 'theme',
+      });
+    } else if (type === 'depth-mask') {
+      onUpdateClockSettings({
+        depthEffect: false,
+      });
+    }
+    await refreshStorageStats();
+  };
 
   if (!isOpen) return null;
 
@@ -336,13 +544,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className="w-full rounded-2xl p-4 transition-all duration-300 border border-neutral-700/80 shadow-inner flex flex-col items-center justify-center text-center overflow-hidden min-h-[110px] relative"
             style={{
               backgroundColor: activeTab === 'pomodoro' ? resolvedPomoTheme.bg : isAmbientActive ? undefined : activeBg,
-              background: activeTab === 'clock' && isAmbientActive ? activeAmbientTheme.bgGradient : undefined,
+              background:
+                activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl
+                  ? `url(${previewWallpaperUrl}) center/cover no-repeat`
+                  : activeTab === 'clock' && isAmbientActive
+                  ? activeAmbientTheme.bgGradient
+                  : undefined,
               color: activeTab === 'pomodoro' ? resolvedPomoTheme.textColor : activeTextColor,
               filter: activeTab === 'clock' ? `brightness(${clockSettings.brightness}%)` : 'none',
             }}
           >
+            {/* Wallpaper Dimmer Overlay for Preview */}
+            {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
+              <div
+                className="absolute inset-0 bg-black pointer-events-none rounded-2xl"
+                style={{ opacity: (clockSettings.wallpaperOpacity ?? 25) / 100 }}
+              />
+            )}
+
             {/* Ambient Background layer in preview */}
-            {activeTab === 'clock' && isAmbientActive && (
+            {activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme') && (
               <AmbientBackground
                 ambientTheme={clockSettings.ambientTheme}
                 particles={clockSettings.ambientParticles !== false}
@@ -360,10 +581,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 )}
                 <div
-                  className="text-3xl sm:text-4xl font-semibold tracking-wider flex items-baseline justify-center"
+                  className="text-3xl sm:text-4xl tracking-wider flex items-baseline justify-center transition-all duration-200"
                   style={{
                     fontFamily: selectedFont.cssFamily,
-                    textShadow: isAmbientActive ? `0 0 20px ${activeAmbientTheme.glowColor}` : 'none',
+                    transform: `scaleY(${clockSettings.fontStretchY ?? 1.0})`,
+                    letterSpacing: `${clockSettings.letterSpacing ?? 0}px`,
+                    fontWeight: Number(clockSettings.fontWeight || '700'),
+                    textShadow:
+                      clockSettings.textEffect === 'glow'
+                        ? `0 0 16px ${activeAccentColor}, 0 0 28px ${activeAccentColor}`
+                        : isAmbientActive
+                        ? `0 0 20px ${activeAmbientTheme.glowColor}`
+                        : 'none',
+                    WebkitTextStroke:
+                      clockSettings.textEffect === 'outline' ? '1.5px currentColor' : undefined,
+                    color: clockSettings.textEffect === 'outline' ? 'transparent' : undefined,
+                    filter:
+                      clockSettings.textEffect === 'liquid'
+                        ? 'drop-shadow(0 2px 8px rgba(255,255,255,0.45))'
+                        : undefined,
                   }}
                 >
                   <span>10:45</span>
@@ -1152,6 +1388,641 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="w-full accent-amber-400 cursor-pointer"
                 />
               </div>
+
+              {/* STANDBY MODE & iOS 26 VISUAL CUSTOMIZATION SUITE */}
+              <div className="space-y-5 p-4 rounded-2xl bg-neutral-950 border border-sky-500/25 shadow-xl">
+                {/* Header & Storage Capacity */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="p-1 rounded-lg bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                        <SlidersHorizontal className="w-4 h-4" />
+                      </span>
+                      <h3 className="text-xs font-semibold text-white uppercase tracking-wider">
+                        Standby Clock & iOS 26 Customization
+                      </h3>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-300 border border-sky-500/30">
+                        iOS 26 Style
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-400 mt-1">
+                      Desk standby display with elongated typography, liquid glass refractions, custom wallpapers, slideshows, and live MP4 loops.
+                    </p>
+                  </div>
+
+                  {/* High Capacity Storage Indicator */}
+                  <div className="flex items-center gap-2 self-start sm:self-auto bg-neutral-900/90 px-3 py-1.5 rounded-xl border border-neutral-800 text-right">
+                    <HardDrive className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <div className="text-left">
+                      <div className="text-[10px] text-neutral-400 leading-tight">
+                        Offline Storage Quota
+                      </div>
+                      <div className="text-xs font-mono font-semibold text-sky-300">
+                        {storageInfo ? `${storageInfo.formattedUsed} used of ${storageInfo.quotaFormatted}` : 'IndexedDB Active (500MB+)'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Message Notification */}
+                {uploadStatusMsg && (
+                  <div className="p-2.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-xs text-sky-200 flex items-center gap-2 animate-fadeIn">
+                    <Sparkles className="w-4 h-4 text-sky-400 shrink-0 animate-spin" />
+                    <span>{uploadStatusMsg}</span>
+                  </div>
+                )}
+
+                {/* 1. iOS 26 TYPOGRAPHY & TEXT STRETCHER */}
+                <div className="space-y-4 p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <Type className="w-3.5 h-3.5 text-sky-400" />
+                      <span>iOS 26 Typography & Font Stretcher</span>
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-mono">Dynamic Stretch</span>
+                  </div>
+
+                  {/* Vertical Elongation (Font Stretch Y) */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-neutral-300 font-medium">Vertical Elongation (Height Stretch)</span>
+                      <span className="font-mono text-sky-400 font-bold bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
+                        {(clockSettings.fontStretchY ?? 1.0).toFixed(2)}x
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.8}
+                      max={2.2}
+                      step={0.05}
+                      value={clockSettings.fontStretchY ?? 1.0}
+                      onChange={(e) =>
+                        onUpdateClockSettings({ fontStretchY: parseFloat(e.target.value) })
+                      }
+                      className="w-full accent-sky-400 cursor-pointer"
+                    />
+                    <div className="grid grid-cols-4 gap-1.5 pt-1">
+                      {[
+                        { label: 'Normal', value: 1.0 },
+                        { label: 'Tall', value: 1.25 },
+                        { label: 'iOS 26', value: 1.5 },
+                        { label: 'Monumental', value: 1.85 },
+                      ].map((preset) => {
+                        const isCurrent = Math.abs((clockSettings.fontStretchY ?? 1.0) - preset.value) < 0.04;
+                        return (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => onUpdateClockSettings({ fontStretchY: preset.value })}
+                            className={`py-1 px-2 rounded-lg text-xs font-mono transition-all cursor-pointer ${
+                              isCurrent
+                                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold'
+                                : 'bg-neutral-800/80 text-neutral-400 hover:text-neutral-200 border border-transparent'
+                            }`}
+                          >
+                            {preset.label} ({preset.value}x)
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Letter Spacing */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-neutral-300 font-medium">Letter Spacing (Kerning)</span>
+                      <span className="font-mono text-neutral-400">{clockSettings.letterSpacing ?? 0}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-4}
+                      max={16}
+                      step={1}
+                      value={clockSettings.letterSpacing ?? 0}
+                      onChange={(e) =>
+                        onUpdateClockSettings({ letterSpacing: parseInt(e.target.value, 10) })
+                      }
+                      className="w-full accent-sky-400 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Font Weight */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-xs text-neutral-300 font-medium block">Typography Weight</span>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[
+                        { label: 'Light', value: '300' },
+                        { label: 'Regular', value: '400' },
+                        { label: 'Semibold', value: '600' },
+                        { label: 'Bold', value: '700' },
+                        { label: 'Heavy', value: '900' },
+                      ].map((w) => {
+                        const isSelected = (clockSettings.fontWeight ?? '700') === w.value;
+                        return (
+                          <button
+                            key={w.value}
+                            type="button"
+                            onClick={() => onUpdateClockSettings({ fontWeight: w.value as any })}
+                            className={`py-1 px-1.5 rounded-lg text-xs transition-all cursor-pointer text-center ${
+                              isSelected
+                                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold'
+                                : 'bg-neutral-800/60 text-neutral-400 hover:text-neutral-200 border border-transparent'
+                            }`}
+                          >
+                            {w.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* iOS 26 Text Style & Refraction Effects */}
+                  <div className="space-y-2 pt-1">
+                    <span className="text-xs text-neutral-300 font-medium block">
+                      Time Text Refraction & Effect
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {[
+                        {
+                          id: 'none',
+                          label: 'Solid Classic',
+                          desc: 'Crisp flat color',
+                        },
+                        {
+                          id: 'liquid',
+                          label: 'iOS 26 Liquid',
+                          desc: 'Fluid glass refraction',
+                        },
+                        {
+                          id: 'outline',
+                          label: 'Lockscreen Outline',
+                          desc: 'Sleek contour stroke',
+                        },
+                        {
+                          id: 'glass',
+                          label: 'Frosted Translucent',
+                          desc: 'Backdrop glass blur',
+                        },
+                        {
+                          id: 'glow',
+                          label: 'Neon Halo Glow',
+                          desc: 'Ambient luminous halo',
+                        },
+                      ].map((effect) => {
+                        const isSelected = (clockSettings.textEffect ?? 'none') === effect.id;
+                        return (
+                          <button
+                            key={effect.id}
+                            type="button"
+                            onClick={() => onUpdateClockSettings({ textEffect: effect.id as ClockTextEffect })}
+                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? 'border-sky-500 bg-sky-500/15 text-white font-semibold shadow-sm'
+                                : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800/80 text-neutral-400 hover:text-neutral-200'
+                            }`}
+                          >
+                            <span className="text-xs font-semibold text-neutral-200">{effect.label}</span>
+                            <span className="text-[10px] text-neutral-500 mt-0.5">{effect.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. WALLPAPER ENGINE (Image, Slideshow & Live MP4) */}
+                <div className="space-y-4 p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Standby Wallpaper Engine</span>
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-mono">High-Res & Video</span>
+                  </div>
+
+                  {/* Mode Selector Tabs */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'theme', label: 'Theme Preset', icon: Palette },
+                      { id: 'image', label: 'Single Photo', icon: ImageIcon },
+                      { id: 'slideshow', label: 'Photo Slideshow', icon: Layers },
+                      { id: 'video', label: 'Live Video (MP4)', icon: Film },
+                    ].map((tab) => {
+                      const isCurrent =
+                        (clockSettings.wallpaperMode ?? 'theme') === tab.id;
+                      const IconComponent = tab.icon;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => onUpdateClockSettings({ wallpaperMode: tab.id as WallpaperMode })}
+                          className={`p-2.5 rounded-xl border flex items-center justify-center gap-2 text-xs font-medium transition-all cursor-pointer ${
+                            isCurrent
+                              ? 'border-sky-500 bg-sky-500/20 text-sky-300 font-bold'
+                              : 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-400'
+                          }`}
+                        >
+                          <IconComponent className="w-3.5 h-3.5" />
+                          <span>{tab.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Mode-Specific Uploader: Single Photo */}
+                  {clockSettings.wallpaperMode === 'image' && (
+                    <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-semibold text-white block">Custom Photo Wallpaper</span>
+                          <span className="text-[11px] text-neutral-400">
+                            Upload your personal photo to display with the standby clock.
+                          </span>
+                        </div>
+                        {hasSingleImage && (
+                          <button
+                            type="button"
+                            onClick={() => handleClearWallpaper('single-image')}
+                            className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Remove</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <input
+                          ref={fileInputSingleRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleSingleImageUpload}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputSingleRef.current?.click()}
+                          disabled={wallpaperLoading}
+                          className="px-4 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>{hasSingleImage ? 'Choose New Photo' : 'Upload Photo Wallpaper'}</span>
+                        </button>
+                        {clockSettings.customWallpaperName && (
+                          <span className="text-xs font-mono text-neutral-400 truncate max-w-xs">
+                            {clockSettings.customWallpaperName}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mode-Specific Uploader: Photo Slideshow */}
+                  {clockSettings.wallpaperMode === 'slideshow' && (
+                    <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-semibold text-white block">Multi-Photo Slideshow</span>
+                          <span className="text-[11px] text-neutral-400">
+                            Select multiple images to rotate as living standby backgrounds.
+                          </span>
+                        </div>
+                        {slideshowCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleClearWallpaper('slideshow-images')}
+                            className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Clear Playlist</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <input
+                          ref={fileInputSlideshowRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={handleSlideshowUpload}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputSlideshowRef.current?.click()}
+                          disabled={wallpaperLoading}
+                          className="px-4 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload Multiple Photos</span>
+                        </button>
+                        <span className="text-xs font-mono text-sky-400">
+                          {slideshowCount > 0 ? `${slideshowCount} photos in playlist` : 'No photos selected'}
+                        </span>
+                      </div>
+
+                      {/* Slideshow Interval Slider */}
+                      <div className="space-y-1.5 pt-2 border-t border-neutral-800/80">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-neutral-300 font-medium">Slideshow Change Interval</span>
+                          <span className="font-mono text-sky-400 font-bold bg-sky-500/10 px-2 py-0.5 rounded">
+                            {clockSettings.slideshowIntervalSeconds ?? 30}s
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={5}
+                          max={120}
+                          step={5}
+                          value={clockSettings.slideshowIntervalSeconds ?? 30}
+                          onChange={(e) =>
+                            onUpdateClockSettings({
+                              slideshowIntervalSeconds: parseInt(e.target.value, 10),
+                            })
+                          }
+                          className="w-full accent-sky-400 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mode-Specific Uploader: Live MP4 Video */}
+                  {clockSettings.wallpaperMode === 'video' && (
+                    <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-semibold text-white block">Live MP4 Video Wallpaper</span>
+                          <span className="text-[11px] text-neutral-400">
+                            Set an MP4 video clip to loop smoothly underneath the standby clock.
+                          </span>
+                        </div>
+                        {hasCustomVideo && (
+                          <button
+                            type="button"
+                            onClick={() => handleClearWallpaper('live-video')}
+                            className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Remove Video</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <input
+                          ref={fileInputVideoRef}
+                          type="file"
+                          accept="video/mp4,video/webm"
+                          className="hidden"
+                          onChange={handleLiveVideoUpload}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputVideoRef.current?.click()}
+                          disabled={wallpaperLoading}
+                          className="px-4 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>{hasCustomVideo ? 'Change MP4 Video' : 'Upload MP4 Video'}</span>
+                        </button>
+                        {clockSettings.liveVideoName && (
+                          <span className="text-xs font-mono text-neutral-400 truncate max-w-xs">
+                            {clockSettings.liveVideoName}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Battery Optimization Indicator */}
+                      <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2 text-xs text-emerald-300">
+                        <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>
+                          Battery Saver Active: Video and slideshow automatically halt when the browser tab is hidden or minimized.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Wallpaper Dimmer Overlay & Blur (Available for Image, Slideshow & Video) */}
+                  {clockSettings.wallpaperMode && clockSettings.wallpaperMode !== 'theme' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-neutral-300">Readability Dimmer Overlay</span>
+                          <span className="font-mono text-sky-400">{clockSettings.wallpaperOpacity ?? 25}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={80}
+                          step={5}
+                          value={clockSettings.wallpaperOpacity ?? 25}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ wallpaperOpacity: parseInt(e.target.value, 10) })
+                          }
+                          className="w-full accent-sky-400 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-neutral-300">Background Gaussian Blur</span>
+                          <span className="font-mono text-sky-400">{clockSettings.wallpaperBlur ?? 0}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={20}
+                          step={1}
+                          value={clockSettings.wallpaperBlur ?? 0}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ wallpaperBlur: parseInt(e.target.value, 10) })
+                          }
+                          className="w-full accent-sky-400 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. STANDBY DEPTH EFFECT (SPATIAL LAYERING BEHIND SUBJECT) */}
+                <div className="space-y-3 p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Depth Effect (Spatial Layering)</span>
+                      </span>
+                      <span className="text-[11px] text-neutral-400 block mt-0.5">
+                        Places clock numbers physically behind your photo's foreground subject.
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!clockSettings.depthEffect}
+                        onChange={(e) => onUpdateClockSettings({ depthEffect: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
+                    </label>
+                  </div>
+
+                  {clockSettings.depthEffect && (
+                    <div className="space-y-3 pt-2 border-t border-neutral-800">
+                      {/* Depth Intensity */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-neutral-300">Spatial Depth Drop-Shadow</span>
+                          <span className="font-mono text-sky-400">{clockSettings.depthIntensity ?? 60}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10}
+                          max={100}
+                          step={5}
+                          value={clockSettings.depthIntensity ?? 60}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ depthIntensity: parseInt(e.target.value, 10) })
+                          }
+                          className="w-full accent-sky-400 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Foreground Mask Cutout Uploader */}
+                      <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800 flex items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-semibold text-neutral-300 block">
+                            Foreground Subject Cutout Mask (Optional)
+                          </span>
+                          <span className="text-[10px] text-neutral-500">
+                            Upload a transparent PNG cutout of the subject to overlay above the time numbers.
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={fileInputDepthMaskRef}
+                            type="file"
+                            accept="image/png,image/webp"
+                            className="hidden"
+                            onChange={handleDepthMaskUpload}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => fileInputDepthMaskRef.current?.click()}
+                            className="px-2.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium cursor-pointer"
+                          >
+                            {hasDepthMask ? 'Change Cutout' : 'Upload PNG'}
+                          </button>
+                          {hasDepthMask && (
+                            <button
+                              type="button"
+                              onClick={() => handleClearWallpaper('depth-mask')}
+                              className="text-xs text-rose-400 hover:text-rose-300"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. OPTIONAL STANDBY DESK WIDGETS */}
+                <div className="space-y-3 p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <LayoutTemplate className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Standby Desk Widgets (Optional)</span>
+                      </span>
+                      <span className="text-[11px] text-neutral-400 block mt-0.5">
+                        Enable or completely turn off ambient glanceable widgets.
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={clockSettings.showStandbyWidgets !== false}
+                        onChange={(e) => onUpdateClockSettings({ showStandbyWidgets: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
+                    </label>
+                  </div>
+
+                  {clockSettings.showStandbyWidgets !== false && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                      {/* Date Widget */}
+                      <label
+                        className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
+                          clockSettings.standbyWidgetsDate !== false
+                            ? 'bg-sky-500/10 border-sky-500/30 text-white'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
+                        }`}
+                      >
+                        <div className="text-left">
+                          <span className="text-xs font-medium block">Date & Calendar</span>
+                          <span className="text-[10px] text-neutral-500">Month & Day card</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={clockSettings.standbyWidgetsDate !== false}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ standbyWidgetsDate: e.target.checked })
+                          }
+                          className="w-4 h-4 rounded text-sky-500 focus:ring-sky-400 border-neutral-700"
+                        />
+                      </label>
+
+                      {/* Battery Widget */}
+                      <label
+                        className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
+                          clockSettings.standbyWidgetsBattery !== false
+                            ? 'bg-sky-500/10 border-sky-500/30 text-white'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
+                        }`}
+                      >
+                        <div className="text-left">
+                          <span className="text-xs font-medium block">Battery & Power</span>
+                          <span className="text-[10px] text-neutral-500">Device power gauge</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={clockSettings.standbyWidgetsBattery !== false}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ standbyWidgetsBattery: e.target.checked })
+                          }
+                          className="w-4 h-4 rounded text-sky-500 focus:ring-sky-400 border-neutral-700"
+                        />
+                      </label>
+
+                      {/* Focus Task Widget */}
+                      <label
+                        className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
+                          clockSettings.standbyWidgetsFocusTask !== false
+                            ? 'bg-sky-500/10 border-sky-500/30 text-white'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
+                        }`}
+                      >
+                        <div className="text-left">
+                          <span className="text-xs font-medium block">Focus Intention</span>
+                          <span className="text-[10px] text-neutral-500">Active study mode</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={clockSettings.standbyWidgetsFocusTask !== false}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ standbyWidgetsFocusTask: e.target.checked })
+                          }
+                          className="w-4 h-4 rounded text-sky-500 focus:ring-sky-400 border-neutral-700"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1903,6 +2774,115 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }
                     className="w-full accent-emerald-400 cursor-pointer"
                   />
+                </div>
+              </div>
+
+              {/* AUTO-START AUTOMATION OPTIONS */}
+              <div className="space-y-3 p-4 rounded-xl bg-neutral-950 border border-neutral-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Auto-Start Session Automation</span>
+                  </span>
+                  <span className="text-[10px] text-neutral-500 font-mono">Continuous Flow</span>
+                </div>
+                <p className="text-xs text-neutral-400">
+                  Automatically transition and launch the next interval without waiting for manual start clicks.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  {/* Auto Start Focus Sessions */}
+                  <div
+                    onClick={() =>
+                      onUpdatePomodoroSettings({
+                        autoStartPomodoros: !pomodoroSettings.autoStartPomodoros,
+                      })
+                    }
+                    className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all ${
+                      pomodoroSettings.autoStartPomodoros
+                        ? 'border-amber-400/60 bg-amber-500/10 text-white'
+                        : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-900 text-neutral-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-neutral-200">Auto-Start Focus</span>
+                      <input
+                        type="checkbox"
+                        id="auto-start-focus-toggle"
+                        checked={!!pomodoroSettings.autoStartPomodoros}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({ autoStartPomodoros: e.target.checked })
+                        }
+                        className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700 cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <span className="text-[11px] text-neutral-400 leading-tight">
+                      Automatically starts focus session when a break finishes.
+                    </span>
+                  </div>
+
+                  {/* Auto Start Short Breaks */}
+                  <div
+                    onClick={() =>
+                      onUpdatePomodoroSettings({
+                        autoStartBreaks: !pomodoroSettings.autoStartBreaks,
+                      })
+                    }
+                    className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all ${
+                      pomodoroSettings.autoStartBreaks
+                        ? 'border-sky-400/60 bg-sky-500/10 text-white'
+                        : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-900 text-neutral-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-neutral-200">Auto-Start Breaks</span>
+                      <input
+                        type="checkbox"
+                        id="auto-start-breaks-toggle"
+                        checked={!!pomodoroSettings.autoStartBreaks}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({ autoStartBreaks: e.target.checked })
+                        }
+                        className="w-4 h-4 rounded text-sky-500 focus:ring-sky-400 border-neutral-700 cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <span className="text-[11px] text-neutral-400 leading-tight">
+                      Automatically begins short break when focus session ends.
+                    </span>
+                  </div>
+
+                  {/* Auto Start Long Breaks */}
+                  <div
+                    onClick={() =>
+                      onUpdatePomodoroSettings({
+                        autoStartLongBreaks: !pomodoroSettings.autoStartLongBreaks,
+                      })
+                    }
+                    className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all ${
+                      pomodoroSettings.autoStartLongBreaks
+                        ? 'border-emerald-400/60 bg-emerald-500/10 text-white'
+                        : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-900 text-neutral-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-neutral-200">Auto Long Breaks</span>
+                      <input
+                        type="checkbox"
+                        id="auto-start-long-breaks-toggle"
+                        checked={!!pomodoroSettings.autoStartLongBreaks}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({ autoStartLongBreaks: e.target.checked })
+                        }
+                        className="w-4 h-4 rounded text-emerald-500 focus:ring-emerald-400 border-neutral-700 cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <span className="text-[11px] text-neutral-400 leading-tight">
+                      Automatically begins long break after completing cycle rounds.
+                    </span>
+                  </div>
                 </div>
               </div>
 

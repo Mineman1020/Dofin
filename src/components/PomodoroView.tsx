@@ -9,9 +9,6 @@ import {
   Clock,
   Maximize2,
   Minimize2,
-  Volume2,
-  VolumeX,
-  Sparkles,
   CheckCircle2,
   Flame,
   Plus,
@@ -20,13 +17,11 @@ import {
   Square,
   Trash2,
   ListTodo,
-  Sun,
-  Moon,
   Check,
   X,
   Users,
   Trophy,
-  Headphones,
+  BarChart3,
 } from 'lucide-react';
 import {
   PomodoroSettings,
@@ -59,6 +54,7 @@ import {
   updatePartyMemberStatus,
   subscribeToParty,
 } from '../utils/partyService';
+import { recordFocusMinutes, recordTaskCompletion } from '../utils/statsStorage';
 import { AmbientBackground } from './AmbientBackground';
 
 interface PomodoroViewProps {
@@ -68,6 +64,8 @@ interface PomodoroViewProps {
   onOpenSettings: () => void;
   onGoToClock: () => void;
   onGoToWelcome: () => void;
+  onGoToTasks?: () => void;
+  onGoToStats?: () => void;
   onOpenParties?: (tab?: 'leaderboard' | 'my-parties' | 'create' | 'join') => void;
   userName: string;
   isDarkMode: boolean;
@@ -83,6 +81,8 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   onOpenSettings,
   onGoToClock,
   onGoToWelcome,
+  onGoToTasks,
+  onGoToStats,
   onOpenParties,
   userName,
   isDarkMode,
@@ -94,8 +94,6 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   const [completedRounds, setCompletedRounds] = useState<number>(0);
   const [currentRound, setCurrentRound] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [ambientMenuOpen, setAmbientMenuOpen] = useState<boolean>(false);
-  const [soundMenuOpen, setSoundMenuOpen] = useState<boolean>(false);
 
   // Active ambient theme definition for Pomodoro
   const effectiveAmbientId: AmbientThemeId =
@@ -133,19 +131,6 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       setAmbientSoundscapeVolume(settings.ambientSoundVolume);
     }
   }, [settings.ambientSoundVolume, settings.ambientSoundEnabled]);
-
-  // Click outside to dismiss ambient dropdowns
-  useEffect(() => {
-    const handleWindowClick = () => {
-      setAmbientMenuOpen(false);
-      setSoundMenuOpen(false);
-    };
-
-    if (ambientMenuOpen || soundMenuOpen) {
-      window.addEventListener('click', handleWindowClick);
-      return () => window.removeEventListener('click', handleWindowClick);
-    }
-  }, [ambientMenuOpen, soundMenuOpen]);
 
   // Task Management State
   const [tasks, setTasks] = useState<PomodoroTask[]>(() => {
@@ -256,24 +241,6 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     };
   }, [isTaskModalOpen]);
 
-  const [isSimpleMode, setIsSimpleMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('pomodoro_simple_mode') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  const toggleSimpleMode = () => {
-    setIsSimpleMode((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('pomodoro_simple_mode', String(next));
-      } catch {}
-      return next;
-    });
-  };
-
   // Save tasks to localStorage
   useEffect(() => {
     try {
@@ -373,6 +340,9 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       setCompletedRounds(nextCompleted);
       completedRoundsRef.current = nextCompleted;
 
+      // Record completed session to local daily stats
+      recordFocusMinutes(0, true);
+
       // Credit completed session to party leaderboard
       const partyIds = getSavedPartyIds();
       if (partyIds.length > 0) {
@@ -395,16 +365,17 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       if (currentRoundRef.current >= settingsRef.current.longBreakInterval) {
         setCurrentRound(1);
         currentRoundRef.current = 1;
-        switchPhase('longBreak', settingsRef.current.autoStartBreaks);
+        const autoStartLong = settingsRef.current.autoStartLongBreaks ?? settingsRef.current.autoStartBreaks;
+        switchPhase('longBreak', !!autoStartLong);
       } else {
         const nextRound = currentRoundRef.current + 1;
         setCurrentRound(nextRound);
         currentRoundRef.current = nextRound;
-        switchPhase('shortBreak', settingsRef.current.autoStartBreaks);
+        switchPhase('shortBreak', !!settingsRef.current.autoStartBreaks);
       }
     } else {
       // Break completed, back to work
-      switchPhase('work', settingsRef.current.autoStartPomodoros);
+      switchPhase('work', !!settingsRef.current.autoStartPomodoros);
     }
   }, [playAlertForPhase, switchPhase]);
 
@@ -439,12 +410,13 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         }
         lastSecondTickRef.current = calculatedSeconds;
 
-        // Focus progress sync for study parties
+        // Focus progress sync for daily stats & study parties
         if (phaseRef.current === 'work') {
           secondsFocusedInMinuteRef.current += secondsElapsed;
           if (secondsFocusedInMinuteRef.current >= 60) {
             const minutesToCredit = Math.floor(secondsFocusedInMinuteRef.current / 60);
             secondsFocusedInMinuteRef.current = secondsFocusedInMinuteRef.current % 60;
+            recordFocusMinutes(minutesToCredit, false);
             const partyIds = getSavedPartyIds();
             if (partyIds.length > 0) {
               syncFocusTimeToParties(partyIds, minutesToCredit, false, 'focusing');
@@ -647,6 +619,9 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       const updated = prev.map((t) => {
         if (t.id === taskId) {
           const nextCompleted = !t.isCompleted;
+          if (nextCompleted) {
+            recordTaskCompletion(1);
+          }
           return {
             ...t,
             isCompleted: nextCompleted,
@@ -845,8 +820,8 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         />
       )}
 
-      {/* Ambient lighting backdrop (Hidden in Simple mode, when idle, or when ambient theme is active) */}
-      {!isAmbientActive && !isSimpleMode && resolvedTheme.enableGlow && (
+      {/* Ambient lighting backdrop (Hidden when idle or when ambient theme is active) */}
+      {!isAmbientActive && resolvedTheme.enableGlow && (
         <div
           className={`absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] rounded-full blur-[150px] pointer-events-none transition-all duration-1000 ${
             isIdle ? 'opacity-10' : 'opacity-25'
@@ -882,327 +857,108 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
             <span className="hidden sm:inline">Welcome Screen</span>
           </button>
 
-          {!isSimpleMode && (
-            <span className="text-xs text-neutral-500 hidden md:inline font-mono">
-              {userName}&apos;s Pomodoro
-            </span>
-          )}
+          <span className="text-xs text-neutral-500 hidden md:inline font-mono">
+            {userName}&apos;s Pomodoro
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Quick Ambient Atmosphere Popover */}
-          <div className="relative">
+          {/* Quick Desk Clock Switch */}
+          <button
+            id="pomo-to-clock-btn"
+            onClick={onGoToClock}
+            className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
+              resolvedTheme.isDark
+                ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
+                : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden sm:inline">Desk Clock</span>
+          </button>
+
+          {/* Quick Task Tracker Switch */}
+          {onGoToTasks && (
             <button
-              id="pomo-ambient-theme-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setAmbientMenuOpen((prev) => !prev);
-                setSoundMenuOpen(false);
-              }}
-              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer shadow-sm ${
-                isAmbientActive
-                  ? 'border-amber-400/60 bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
+              id="pomo-to-tasks-btn"
+              onClick={onGoToTasks}
+              className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
+                resolvedTheme.isDark
+                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-emerald-400 hover:text-emerald-300'
+                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-emerald-600'
+              }`}
+              title="Open Task Tracker (Track tasks without timer)"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Tasks</span>
+            </button>
+          )}
+
+          {/* Quick Stats & Analytics Switch */}
+          {onGoToStats && (
+            <button
+              id="pomo-to-stats-btn"
+              onClick={onGoToStats}
+              className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
+                resolvedTheme.isDark
+                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-amber-400 hover:text-amber-300'
+                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-amber-600'
+              }`}
+              title="Open Weekly Progress & Analytics"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Stats</span>
+            </button>
+          )}
+
+          {/* Study & Work Party Leaderboard Button */}
+          {onOpenParties && (
+            <button
+              id="pomo-parties-btn"
+              onClick={() => onOpenParties(activeParty ? 'leaderboard' : 'my-parties')}
+              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border cursor-pointer shadow-sm ${
+                activeParty
+                  ? 'border-amber-400/50 bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
                   : resolvedTheme.isDark
                   ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
                   : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
               }`}
-              title="Ambient Themes & Environments (Beachside Sunset, Rainy Day, Aurora...)"
+              title={activeParty ? `Party ${activeParty.name} (${activeParty.code}) - Open Leaderboard` : 'Open Parties & Leaderboard'}
             >
-              <Sparkles
-                className={`w-3.5 h-3.5 ${
-                  isAmbientActive ? 'text-amber-400 animate-spin-slow' : 'text-amber-500'
-                }`}
-              />
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline">
-                {isAmbientActive ? activeAmbient.name : 'Atmosphere'}
+                {activeParty ? `Party ${activeParty.code}` : 'Parties'}
               </span>
             </button>
-
-            {/* Ambient Themes Popover Menu */}
-            {ambientMenuOpen && (
-              <div
-                id="pomo-ambient-menu-dropdown"
-                onClick={(e) => e.stopPropagation()}
-                className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-h-[82vh] overflow-y-auto p-3 sm:p-4 rounded-2xl bg-neutral-900/98 backdrop-blur-2xl border border-neutral-700/80 shadow-2xl z-50 text-white animate-fadeIn"
-              >
-                <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-neutral-800">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-neutral-200">
-                      Focus Atmospheres & Moods
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (onUpdateSettings) {
-                        onUpdateSettings({ ambientTheme: 'none', ambientSoundEnabled: false });
-                      }
-                      setAmbientMenuOpen(false);
-                    }}
-                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
-                      effectiveAmbientId === 'none'
-                        ? 'border-neutral-500 bg-neutral-800 text-white font-medium'
-                        : 'border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-neutral-200'
-                    }`}
-                  >
-                    Minimal Clean (Off)
-                  </button>
-                </div>
-
-                {/* Ambient Themes List */}
-                <div className="space-y-1.5 max-h-[65vh] overflow-y-auto pr-1">
-                  {AMBIENT_THEMES.filter((t) => t.id !== 'none').map((theme) => {
-                    const isSelected = effectiveAmbientId === theme.id;
-                    return (
-                      <button
-                        key={theme.id}
-                        id={`pomo-ambient-opt-${theme.id}`}
-                        onClick={() => {
-                          if (onUpdateSettings) {
-                            onUpdateSettings({
-                              ambientTheme: theme.id,
-                              ...(theme.soundType && theme.soundType !== 'none'
-                                ? { ambientSoundEnabled: settings.ambientSoundEnabled }
-                                : {}),
-                            });
-                          }
-                          setAmbientMenuOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-amber-400/15 text-white border border-amber-400/40 shadow-sm'
-                            : 'hover:bg-neutral-800/70 text-neutral-300 border border-transparent'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div
-                            className="w-7 h-7 rounded-lg border border-neutral-700 flex-shrink-0 relative overflow-hidden"
-                            style={{ background: theme.bgGradient }}
-                          >
-                            <span
-                              className="absolute inset-0 m-auto w-2 h-2 rounded-full"
-                              style={{ backgroundColor: theme.accentColor }}
-                            />
-                          </div>
-
-                          <div className="truncate">
-                            <div className="text-xs font-semibold truncate flex items-center gap-1.5">
-                              <span>{theme.name}</span>
-                              {theme.soundType && theme.soundType !== 'none' && (
-                                <Headphones className="w-3 h-3 text-sky-400 opacity-85 shrink-0" />
-                              )}
-                            </div>
-                            <div className="text-[11px] text-neutral-400 truncate mt-0.5">
-                              {theme.tagline}
-                            </div>
-                          </div>
-                        </div>
-
-                        {isSelected && (
-                          <Check className="w-4 h-4 text-amber-400 flex-shrink-0 ml-2" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Ambient Audio Toggle / Volume Popover */}
-          {isAmbientActive && activeAmbient.soundType && activeAmbient.soundType !== 'none' && (
-            <div className="relative">
-              <button
-                id="pomo-ambient-sound-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSoundMenuOpen((prev) => !prev);
-                  setAmbientMenuOpen(false);
-                }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                  settings.ambientSoundEnabled
-                    ? 'border-sky-400/60 bg-sky-500/15 text-sky-300 ring-1 ring-sky-400/30'
-                    : resolvedTheme.isDark
-                    ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
-                    : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-                }`}
-                title="Ambient Soundscape Controls"
-              >
-                {settings.ambientSoundEnabled ? (
-                  <Volume2 className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
-                ) : (
-                  <VolumeX className="w-3.5 h-3.5 text-neutral-400" />
-                )}
-                <span className="hidden sm:inline">
-                  {settings.ambientSoundEnabled ? activeAmbient.soundLabel : 'Soundscape Muted'}
-                </span>
-              </button>
-
-              {/* Sound Settings Popover */}
-              {soundMenuOpen && (
-                <div
-                  id="pomo-ambient-sound-dropdown"
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute right-0 top-full mt-2 w-64 p-3.5 rounded-2xl bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 shadow-2xl z-50 text-white animate-fadeIn"
-                >
-                  <div className="flex items-center justify-between pb-2 mb-3 border-b border-neutral-800">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-neutral-300">
-                      {activeAmbient.soundLabel}
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (onUpdateSettings) {
-                          onUpdateSettings({
-                            ambientSoundEnabled: !settings.ambientSoundEnabled,
-                          });
-                        }
-                      }}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer ${
-                        settings.ambientSoundEnabled
-                          ? 'bg-sky-500/20 text-sky-300 border-sky-400/40'
-                          : 'bg-neutral-800 text-neutral-400 border-neutral-700'
-                      }`}
-                    >
-                      {settings.ambientSoundEnabled ? 'ON' : 'OFF'}
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-[11px] text-neutral-300">
-                      <span>Soundscape Volume</span>
-                      <span className="font-mono text-sky-400">
-                        {settings.ambientSoundVolume ?? 35}%
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={settings.ambientSoundVolume ?? 35}
-                      onChange={(e) => {
-                        if (onUpdateSettings) {
-                          onUpdateSettings({
-                            ambientSoundVolume: parseInt(e.target.value, 10),
-                            ambientSoundEnabled: true,
-                          });
-                        }
-                      }}
-                      className="w-full accent-sky-400 cursor-pointer"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
           )}
 
-          {/* Simple Mode Button (Toggles minimal distraction-free layout) */}
+          {/* Fullscreen */}
           <button
-            id="pomo-simple-mode-btn"
-            onClick={toggleSimpleMode}
-            className={`apple-hover flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border cursor-pointer shadow-sm ${
-              isSimpleMode
-                ? 'bg-amber-500 border-amber-400 text-neutral-950 font-bold shadow-amber-500/20'
-                : resolvedTheme.isDark
-                ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
-                : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-            }`}
-            title={isSimpleMode ? 'Exit Simple Mode' : 'Toggle Simple Mode (Distraction-Free)'}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Simple</span>
-          </button>
-
-          {/* Dark Mode Toggle Button */}
-          <button
-            id="pomo-dark-mode-btn"
-            onClick={onToggleDarkMode}
-            className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer shadow-sm ${
+            id="pomo-fullscreen-btn"
+            onClick={toggleFullscreen}
+            className={`apple-icon-hover p-2 rounded-xl text-xs border cursor-pointer ${
               resolvedTheme.isDark
-                ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-200'
+                ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
                 : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
             }`}
-            title={`Switch to ${resolvedTheme.isDark ? 'Light' : 'Dark'} Mode`}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
           >
-            {resolvedTheme.isDark ? (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">Light</span>
-              </>
-            ) : (
-              <>
-                <Moon className="w-3.5 h-3.5 text-sky-500" />
-                <span className="hidden sm:inline">Dark</span>
-              </>
-            )}
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
 
-          {!isSimpleMode && (
-            <>
-              {/* Quick Desk Clock Switch */}
-              <button
-                id="pomo-to-clock-btn"
-                onClick={onGoToClock}
-                className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
-                  resolvedTheme.isDark
-                    ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
-                    : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5 text-amber-500" />
-                <span className="hidden sm:inline">Desk Clock</span>
-              </button>
-
-              {/* Study & Work Party Leaderboard Button */}
-              {onOpenParties && (
-                <button
-                  id="pomo-parties-btn"
-                  onClick={() => onOpenParties(activeParty ? 'leaderboard' : 'my-parties')}
-                  className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border cursor-pointer shadow-sm ${
-                    activeParty
-                      ? 'border-amber-400/50 bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
-                      : resolvedTheme.isDark
-                      ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
-                      : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-                  }`}
-                  title={activeParty ? `Party ${activeParty.name} (${activeParty.code}) - Open Leaderboard` : 'Open Parties & Leaderboard'}
-                >
-                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline">
-                    {activeParty ? `Party ${activeParty.code}` : 'Parties'}
-                  </span>
-                </button>
-              )}
-
-              {/* Fullscreen */}
-              <button
-                id="pomo-fullscreen-btn"
-                onClick={toggleFullscreen}
-                className={`apple-icon-hover p-2 rounded-xl text-xs border cursor-pointer ${
-                  resolvedTheme.isDark
-                    ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
-                    : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-                }`}
-                title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
-              >
-                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-              </button>
-
-              {/* Settings */}
-              <button
-                id="pomo-settings-btn"
-                onClick={onOpenSettings}
-                className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
-                  resolvedTheme.isDark
-                    ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
-                    : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-                }`}
-              >
-                <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">Settings</span>
-              </button>
-            </>
-          )}
+          {/* Settings */}
+          <button
+            id="pomo-settings-btn"
+            onClick={onOpenSettings}
+            className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
+              resolvedTheme.isDark
+                ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
+                : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span className="hidden sm:inline">Settings</span>
+          </button>
         </div>
       </header>
 
@@ -1212,69 +968,67 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           isIdle ? 'py-4' : 'pt-20 pb-6'
         }`}
       >
-        {/* Phase Pill Selector (Hidden in Simple mode or when idle to collapse and center timer) */}
-        {!isSimpleMode && (
-          <div
-            id="pomodoro-phase-pills"
-            className={`flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-inner transition-all duration-700 ease-in-out ${
-              isIdle
-                ? 'opacity-0 -translate-y-4 pointer-events-none max-h-0 mb-0 py-0 border-transparent overflow-hidden'
-                : 'opacity-100 translate-y-0 pointer-events-auto max-h-16 mb-6'
+        {/* Phase Pill Selector */}
+        <div
+          id="pomodoro-phase-pills"
+          className={`flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-inner transition-all duration-700 ease-in-out ${
+            isIdle
+              ? 'opacity-0 -translate-y-4 pointer-events-none max-h-0 mb-0 py-0 border-transparent overflow-hidden'
+              : 'opacity-100 translate-y-0 pointer-events-auto max-h-16 mb-6'
+          }`}
+          style={{
+            backgroundColor: resolvedTheme.cardBg,
+            borderColor: resolvedTheme.isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)',
+          }}
+        >
+          <button
+            id="phase-work-btn"
+            onClick={() => switchPhase('work')}
+            className={`apple-hover px-4 py-2 rounded-xl text-xs font-semibold tracking-wide cursor-pointer ${
+              phase === 'work'
+                ? 'shadow-md font-bold'
+                : 'opacity-70 hover:opacity-100'
             }`}
             style={{
-              backgroundColor: resolvedTheme.cardBg,
-              borderColor: resolvedTheme.isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)',
+              backgroundColor: phase === 'work' ? resolvedTheme.workColor : 'transparent',
+              color: phase === 'work' ? (resolvedTheme.isDark ? '#000000' : '#ffffff') : resolvedTheme.textColor,
             }}
           >
-            <button
-              id="phase-work-btn"
-              onClick={() => switchPhase('work')}
-              className={`apple-hover px-4 py-2 rounded-xl text-xs font-semibold tracking-wide cursor-pointer ${
-                phase === 'work'
-                  ? 'shadow-md font-bold'
-                  : 'opacity-70 hover:opacity-100'
-              }`}
-              style={{
-                backgroundColor: phase === 'work' ? resolvedTheme.workColor : 'transparent',
-                color: phase === 'work' ? (resolvedTheme.isDark ? '#000000' : '#ffffff') : resolvedTheme.textColor,
-              }}
-            >
-              Focus ({settings.workMinutes}m)
-            </button>
+            Focus ({settings.workMinutes}m)
+          </button>
 
-            <button
-              id="phase-short-break-btn"
-              onClick={() => switchPhase('shortBreak')}
-              className={`apple-hover px-4 py-2 rounded-xl text-xs font-semibold tracking-wide cursor-pointer ${
-                phase === 'shortBreak'
-                  ? 'shadow-md font-bold'
-                  : 'opacity-70 hover:opacity-100'
-              }`}
-              style={{
-                backgroundColor: phase === 'shortBreak' ? resolvedTheme.shortBreakColor : 'transparent',
-                color: phase === 'shortBreak' ? (resolvedTheme.isDark ? '#000000' : '#ffffff') : resolvedTheme.textColor,
-              }}
-            >
-              Short Break ({settings.shortBreakMinutes}m)
-            </button>
+          <button
+            id="phase-short-break-btn"
+            onClick={() => switchPhase('shortBreak')}
+            className={`apple-hover px-4 py-2 rounded-xl text-xs font-semibold tracking-wide cursor-pointer ${
+              phase === 'shortBreak'
+                ? 'shadow-md font-bold'
+                : 'opacity-70 hover:opacity-100'
+            }`}
+            style={{
+              backgroundColor: phase === 'shortBreak' ? resolvedTheme.shortBreakColor : 'transparent',
+              color: phase === 'shortBreak' ? (resolvedTheme.isDark ? '#000000' : '#ffffff') : resolvedTheme.textColor,
+            }}
+          >
+            Short Break ({settings.shortBreakMinutes}m)
+          </button>
 
-            <button
-              id="phase-long-break-btn"
-              onClick={() => switchPhase('longBreak')}
-              className={`apple-hover px-4 py-2 rounded-xl text-xs font-semibold tracking-wide cursor-pointer ${
-                phase === 'longBreak'
-                  ? 'shadow-md font-bold'
-                  : 'opacity-70 hover:opacity-100'
-              }`}
-              style={{
-                backgroundColor: phase === 'longBreak' ? resolvedTheme.longBreakColor : 'transparent',
-                color: phase === 'longBreak' ? (resolvedTheme.isDark ? '#000000' : '#ffffff') : resolvedTheme.textColor,
-              }}
-            >
-              Long Break ({settings.longBreakMinutes}m)
-            </button>
-          </div>
-        )}
+          <button
+            id="phase-long-break-btn"
+            onClick={() => switchPhase('longBreak')}
+            className={`apple-hover px-4 py-2 rounded-xl text-xs font-semibold tracking-wide cursor-pointer ${
+              phase === 'longBreak'
+                ? 'shadow-md font-bold'
+                : 'opacity-70 hover:opacity-100'
+            }`}
+            style={{
+              backgroundColor: phase === 'longBreak' ? resolvedTheme.longBreakColor : 'transparent',
+              color: phase === 'longBreak' ? (resolvedTheme.isDark ? '#000000' : '#ffffff') : resolvedTheme.textColor,
+            }}
+          >
+            Long Break ({settings.longBreakMinutes}m)
+          </button>
+        </div>
 
         {/* Central Display: Circle on Left/Center, and Vertical Controls + Tasks on the Right */}
         <div className="flex flex-col lg:flex-row items-center justify-center gap-6 sm:gap-8 lg:gap-10 my-auto w-full transition-all duration-700">

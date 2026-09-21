@@ -345,6 +345,26 @@ export const DEFAULT_CLOCK_SETTINGS: ClockSettings = {
   ambientSoundEnabled: false,
   ambientSoundVolume: 35,
   ambientParticles: true,
+
+  // Standby Font & Appearance
+  fontStretchY: 1.0,
+  letterSpacing: 0,
+  fontWeight: '700',
+  textEffect: 'none',
+  depthEffect: false,
+  depthIntensity: 60,
+
+  // Wallpaper Modes
+  wallpaperMode: 'theme',
+  wallpaperOpacity: 25,
+  wallpaperBlur: 0,
+  slideshowIntervalSeconds: 30,
+
+  // Optional Standby Display Widgets
+  showStandbyWidgets: false,
+  standbyWidgetsDate: true,
+  standbyWidgetsBattery: true,
+  standbyWidgetsFocusTask: true,
 };
 
 export const POMODORO_THEME_PRESETS: PomodoroThemePreset[] = [
@@ -488,6 +508,7 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
   longBreakMinutes: 15,
   longBreakInterval: 4,
   autoStartBreaks: false,
+  autoStartLongBreaks: false,
   autoStartPomodoros: false,
   soundAlerts: true,
   tickSound: false,
