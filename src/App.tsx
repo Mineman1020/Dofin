@@ -13,6 +13,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { NameModal } from './components/NameModal';
 import { PartyModal } from './components/PartyModal';
 import { StartupReveal } from './components/StartupReveal';
+import { ShortcutsSheet } from './components/ShortcutsSheet';
 
 const STORAGE_KEYS = {
   USER_NAME: 'desk_clock_user_name',
@@ -66,6 +67,9 @@ export default function App() {
   const [partyModalTab, setPartyModalTab] = useState<
     'leaderboard' | 'my-parties' | 'create' | 'join'
   >('my-parties');
+
+  // Global Context-Aware Shortcuts Sheet state
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
 
   const handleOpenParties = (
     tab: 'leaderboard' | 'my-parties' | 'create' | 'join' = 'my-parties'
@@ -177,7 +181,19 @@ export default function App() {
         return;
       }
 
+      // 1. Context-Aware Shortcuts Sheet: Trigger on '?', '\', or '/'
+      if (e.key === '?' || e.key === '\\' || e.key === '/') {
+        e.preventDefault();
+        setIsShortcutsOpen((prev) => !prev);
+        return;
+      }
+
+      // 2. Escape: Dismiss top modal or return to Welcome Screen
       if (e.key === 'Escape') {
+        if (isShortcutsOpen) {
+          setIsShortcutsOpen(false);
+          return;
+        }
         if (isPartyModalOpen) {
           setIsPartyModalOpen(false);
         } else if (isSettingsOpen) {
@@ -187,18 +203,56 @@ export default function App() {
         } else if (currentView !== 'welcome') {
           setCurrentView('welcome');
         }
-      } else if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
+        return;
+      }
+
+      // If shortcuts sheet is open, do not execute other view hotkeys
+      if (isShortcutsOpen) return;
+
+      // 3. Settings modal toggle
+      if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
         setIsSettingsOpen((prev) => !prev);
-      } else if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey) {
+        return;
+      }
+
+      // 4. Study party modal toggle
+      if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey) {
         setIsPartyModalOpen((prev) => !prev);
-      } else if (e.key.toLowerCase() === 'd' && !e.ctrlKey && !e.metaKey) {
+        return;
+      }
+
+      // 5. Dark mode toggle
+      if (e.key.toLowerCase() === 'd' && !e.ctrlKey && !e.metaKey) {
         handleToggleDarkMode();
+        return;
+      }
+
+      // 6. Direct view navigation hotkeys
+      if (!isSettingsOpen && !isPartyModalOpen && !isNameModalOpen) {
+        if (currentView === 'welcome') {
+          if (e.key === '1' || e.key.toLowerCase() === 'c') setCurrentView('clock');
+          else if (e.key === '2' || e.key.toLowerCase() === 't') setCurrentView('pomodoro');
+          else if (e.key === '3' || e.key.toLowerCase() === 'k') setCurrentView('tasks');
+          else if (e.key === '4' || e.key.toLowerCase() === 'a') setCurrentView('stats');
+        } else if (currentView === 'clock') {
+          // Clock view: switch to Pomodoro
+          if (e.key.toLowerCase() === 't') setCurrentView('pomodoro');
+        } else if (currentView === 'pomodoro') {
+          // Pomodoro view: switch to Clock
+          if (e.key.toLowerCase() === 'c') setCurrentView('clock');
+        } else if (currentView === 'tasks') {
+          // Tasks view: switch to Stats
+          if (e.key.toLowerCase() === 'a') setCurrentView('stats');
+        } else if (currentView === 'stats') {
+          // Stats view: switch to Tasks
+          if (e.key.toLowerCase() === 't') setCurrentView('tasks');
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPartyModalOpen, isSettingsOpen, isNameModalOpen, userName, currentView]);
+  }, [isShortcutsOpen, isPartyModalOpen, isSettingsOpen, isNameModalOpen, userName, currentView]);
 
   return (
     <div
@@ -215,6 +269,7 @@ export default function App() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenParties={handleOpenParties}
           onOpenNameModal={() => setIsNameModalOpen(true)}
+          onOpenShortcuts={() => setIsShortcutsOpen(true)}
           clockSettings={clockSettings}
           pomodoroSettings={pomodoroSettings}
           isDarkMode={isDarkMode}
@@ -229,6 +284,7 @@ export default function App() {
           onUpdateSettings={handleUpdateClockSettings}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenParties={() => handleOpenParties('my-parties')}
+          onOpenShortcuts={() => setIsShortcutsOpen(true)}
           onGoToWelcome={() => setCurrentView('welcome')}
           onGoToPomodoro={() => setCurrentView('pomodoro')}
           onGoToTasks={() => setCurrentView('tasks')}
@@ -247,6 +303,7 @@ export default function App() {
           onUpdateSettings={handleUpdatePomodoroSettings}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenParties={handleOpenParties}
+          onOpenShortcuts={() => setIsShortcutsOpen(true)}
           onGoToClock={() => setCurrentView('clock')}
           onGoToWelcome={() => setCurrentView('welcome')}
           onGoToTasks={() => setCurrentView('tasks')}
@@ -268,6 +325,7 @@ export default function App() {
           onGoToStats={() => setCurrentView('stats')}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenParties={handleOpenParties}
+          onOpenShortcuts={() => setIsShortcutsOpen(true)}
           userName={userName || 'Friend'}
           isDarkMode={isDarkMode}
           onToggleDarkMode={handleToggleDarkMode}
@@ -285,6 +343,7 @@ export default function App() {
           onGoToTasks={() => setCurrentView('tasks')}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenParties={handleOpenParties}
+          onOpenShortcuts={() => setIsShortcutsOpen(true)}
           userName={userName || 'Friend'}
           isDarkMode={isDarkMode}
           onToggleDarkMode={handleToggleDarkMode}
@@ -340,6 +399,15 @@ export default function App() {
           onComplete={() => setShowStartupReveal(false)}
         />
       )}
+
+      {/* Context-Aware Global Shortcuts Sheet */}
+      <ShortcutsSheet
+        isOpen={isShortcutsOpen}
+        onClose={() => setIsShortcutsOpen(false)}
+        currentView={currentView}
+        isDarkMode={isDarkMode}
+        onSelectMode={(mode) => setCurrentView(mode)}
+      />
     </div>
   );
 }

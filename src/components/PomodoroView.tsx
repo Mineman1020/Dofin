@@ -22,6 +22,7 @@ import {
   Users,
   Trophy,
   BarChart3,
+  Keyboard,
 } from 'lucide-react';
 import {
   PomodoroSettings,
@@ -67,6 +68,7 @@ interface PomodoroViewProps {
   onGoToTasks?: () => void;
   onGoToStats?: () => void;
   onOpenParties?: (tab?: 'leaderboard' | 'my-parties' | 'create' | 'join') => void;
+  onOpenShortcuts?: () => void;
   userName: string;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
@@ -84,6 +86,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   onGoToTasks,
   onGoToStats,
   onOpenParties,
+  onOpenShortcuts,
   userName,
   isDarkMode,
   onToggleDarkMode,
@@ -877,61 +880,6 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
             <span className="hidden sm:inline">Desk Clock</span>
           </button>
 
-          {/* Quick Task Tracker Switch */}
-          {onGoToTasks && (
-            <button
-              id="pomo-to-tasks-btn"
-              onClick={onGoToTasks}
-              className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
-                resolvedTheme.isDark
-                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-emerald-400 hover:text-emerald-300'
-                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-emerald-600'
-              }`}
-              title="Open Task Tracker (Track tasks without timer)"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Tasks</span>
-            </button>
-          )}
-
-          {/* Quick Stats & Analytics Switch */}
-          {onGoToStats && (
-            <button
-              id="pomo-to-stats-btn"
-              onClick={onGoToStats}
-              className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
-                resolvedTheme.isDark
-                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-amber-400 hover:text-amber-300'
-                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-amber-600'
-              }`}
-              title="Open Weekly Progress & Analytics"
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Stats</span>
-            </button>
-          )}
-
-          {/* Study & Work Party Leaderboard Button */}
-          {onOpenParties && (
-            <button
-              id="pomo-parties-btn"
-              onClick={() => onOpenParties(activeParty ? 'leaderboard' : 'my-parties')}
-              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border cursor-pointer shadow-sm ${
-                activeParty
-                  ? 'border-amber-400/50 bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
-                  : resolvedTheme.isDark
-                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
-                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-              }`}
-              title={activeParty ? `Party ${activeParty.name} (${activeParty.code}) - Open Leaderboard` : 'Open Parties & Leaderboard'}
-            >
-              <Trophy className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">
-                {activeParty ? `Party ${activeParty.code}` : 'Parties'}
-              </span>
-            </button>
-          )}
-
           {/* Fullscreen */}
           <button
             id="pomo-fullscreen-btn"
@@ -959,6 +907,22 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
             <Settings className="w-4 h-4" />
             <span className="hidden sm:inline">Settings</span>
           </button>
+
+          {/* Shortcuts Guide Button */}
+          {onOpenShortcuts && (
+            <button
+              id="pomo-shortcuts-btn"
+              onClick={onOpenShortcuts}
+              className={`apple-icon-hover p-2 rounded-xl text-xs border cursor-pointer ${
+                resolvedTheme.isDark
+                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
+                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
+              }`}
+              title="Keyboard Shortcuts (? or \)"
+            >
+              <Keyboard className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </header>
 

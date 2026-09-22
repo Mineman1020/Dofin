@@ -19,6 +19,7 @@ import {
   Calendar,
   Layers,
   Image as ImageIcon,
+  Keyboard,
 } from 'lucide-react';
 import { ClockSettings, ThemePreset, AmbientThemePreset, AmbientThemeId } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS, AMBIENT_THEMES } from '../utils/constants';
@@ -29,7 +30,9 @@ import {
   stopAmbientSoundscape,
   setAmbientSoundscapeVolume,
 } from '../utils/audio';
-import { getWallpaperItem } from '../utils/wallpaperStorage';
+import { getWallpaperItem, saveWallpaperItem } from '../utils/wallpaperStorage';
+import { processImageFile, isSupportedImageFile } from '../utils/imageProcessor';
+import { generateSubjectMask } from '../utils/subjectSegmenter';
 import { AmbientBackground } from './AmbientBackground';
 
 interface ClockViewProps {
@@ -41,6 +44,7 @@ interface ClockViewProps {
   onGoToTasks?: () => void;
   onGoToStats?: () => void;
   onOpenParties?: () => void;
+  onOpenShortcuts?: () => void;
   userName: string;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
@@ -55,6 +59,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
   onGoToTasks,
   onGoToStats,
   onOpenParties,
+  onOpenShortcuts,
   userName,
   isDarkMode,
   onToggleDarkMode,
@@ -74,6 +79,10 @@ export const ClockView: React.FC<ClockViewProps> = ({
   // Live Battery State for Optional Standby Widget
   const [batteryState, setBatteryState] = useState<{ level: number; charging: boolean } | null>(null);
 
+  // Direct Drag-and-Drop Wallpaper on Clock View
+  const [isDraggingOverClock, setIsDraggingOverClock] = useState<boolean>(false);
+  const [dragUploadMessage, setDragUploadMessage] = useState<string | null>(null);
+
   const idleTimerRef = useRef<number | null>(null);
   const lastHourChimedRef = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -86,7 +95,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
     activeAmbient &&
     activeAmbient.id !== 'none';
 
-  // Load custom wallpaper assets from local high-capacity IndexedDB
+  // Load custom wallpaper assets from local high-capacity storage
   useEffect(() => {
     let active = true;
     let createdBlobUrls: string[] = [];
@@ -95,37 +104,67 @@ export const ClockView: React.FC<ClockViewProps> = ({
       try {
         if (settings.wallpaperMode === 'image') {
           const item = await getWallpaperItem('single-image');
-          if (active && item && item.data) {
-            if (typeof item.data === 'string') {
-              setSingleWallpaperUrl(item.data);
-            } else if (item.data instanceof Blob) {
-              const url = URL.createObjectURL(item.data);
-              createdBlobUrls.push(url);
-              setSingleWallpaperUrl(url);
+          if (active) {
+            if (item && item.data) {
+              if (typeof item.data === 'string') {
+                setSingleWallpaperUrl(item.data);
+              } else if (item.data instanceof Blob) {
+                const url = URL.createObjectURL(item.data);
+                createdBlobUrls.push(url);
+                setSingleWallpaperUrl(url);
+              }
+            } else {
+              setSingleWallpaperUrl(null);
             }
           }
         } else if (settings.wallpaperMode === 'slideshow') {
           const item = await getWallpaperItem('slideshow-images');
-          if (active && item && Array.isArray(item.data)) {
-            setSlideshowUrls(item.data);
-            setCurrentSlideIndex(0);
+          if (active) {
+            if (item && Array.isArray(item.data)) {
+              setSlideshowUrls(item.data);
+              setCurrentSlideIndex(0);
+            } else {
+              setSlideshowUrls([]);
+            }
           }
         } else if (settings.wallpaperMode === 'video') {
           const item = await getWallpaperItem('live-video');
-          if (active && item && item.data) {
-            if (item.data instanceof Blob) {
-              const url = URL.createObjectURL(item.data);
-              createdBlobUrls.push(url);
-              setVideoUrl(url);
-            } else if (typeof item.data === 'string') {
-              setVideoUrl(item.data);
+          if (active) {
+            if (item && item.data) {
+              if (item.data instanceof Blob) {
+                const url = URL.createObjectURL(item.data);
+                createdBlobUrls.push(url);
+                setVideoUrl(url);
+              } else if (typeof item.data === 'string') {
+                setVideoUrl(item.data);
+              }
+            } else {
+              setVideoUrl(null);
             }
           }
         }
 
         // Check depth mask
         if (settings.depthEffect) {
-          const maskItem = await getWallpaperItem('depth-mask');
+          let maskItem = await getWallpaperItem('depth-mask');
+          // If depth effect is enabled, but no mask exists yet and we have a single image wallpaper, auto-extract!
+          if (!maskItem) {
+            const singleItem = await getWallpaperItem('single-image');
+            if (singleItem && singleItem.data) {
+              try {
+                const sourceUrl =
+                  typeof singleItem.data === 'string'
+                    ? singleItem.data
+                    : URL.createObjectURL(singleItem.data as Blob);
+                const autoMask = await generateSubjectMask(sourceUrl);
+                await saveWallpaperItem('depth-mask', autoMask, 'auto-detected-subject.png');
+                maskItem = { id: 'depth-mask', data: autoMask, name: 'auto-detected-subject.png', updatedAt: Date.now() };
+              } catch (err) {
+                console.warn('Auto depth masking in ClockView failed:', err);
+              }
+            }
+          }
+
           if (active && maskItem && maskItem.data) {
             if (maskItem.data instanceof Blob) {
               const url = URL.createObjectURL(maskItem.data);
@@ -134,7 +173,11 @@ export const ClockView: React.FC<ClockViewProps> = ({
             } else if (typeof maskItem.data === 'string') {
               setDepthMaskUrl(maskItem.data);
             }
+          } else if (!maskItem) {
+            setDepthMaskUrl(null);
           }
+        } else {
+          setDepthMaskUrl(null);
         }
       } catch (e) {
         console.warn('Error loading custom wallpaper:', e);
@@ -143,11 +186,33 @@ export const ClockView: React.FC<ClockViewProps> = ({
 
     loadWallpapers();
 
+    // Listen for real-time wallpaper updates emitted by storage
+    const handleWallpaperUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ id: string; data?: any; name?: string }>;
+      if (!customEvent.detail) return;
+      if (
+        (settings.wallpaperMode === 'image' && customEvent.detail.id === 'single-image') ||
+        (settings.wallpaperMode === 'slideshow' && customEvent.detail.id === 'slideshow-images') ||
+        (settings.wallpaperMode === 'video' && customEvent.detail.id === 'live-video') ||
+        customEvent.detail.id === 'depth-mask'
+      ) {
+        loadWallpapers();
+      }
+    };
+
+    window.addEventListener('standby-wallpaper-updated', handleWallpaperUpdate);
+
     return () => {
       active = false;
+      window.removeEventListener('standby-wallpaper-updated', handleWallpaperUpdate);
       createdBlobUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [settings.wallpaperMode, settings.depthEffect]);
+  }, [
+    settings.wallpaperMode,
+    settings.customWallpaperName,
+    settings.wallpaperTimestamp,
+    settings.depthEffect,
+  ]);
 
   // Slideshow interval timer (Active ONLY when slideshow mode is selected to conserve battery)
   useEffect(() => {
@@ -405,96 +470,69 @@ export const ClockView: React.FC<ClockViewProps> = ({
   const dateNum = time.getDate();
   const year = time.getFullYear();
 
-  // Digit size classes
+  // Digit size classes - comfortably proportioned and legible from a distance
   const getDigitSizeStyle = () => {
     switch (settings.digitSize) {
       case 'medium':
-        return 'text-6xl sm:text-8xl md:text-9xl';
+        return 'text-7xl sm:text-8xl md:text-9xl lg:text-[10rem]';
       case 'large':
-        return 'text-7xl sm:text-9xl md:text-[11rem] lg:text-[13rem]';
+        return 'text-8xl sm:text-9xl md:text-[12rem] lg:text-[14rem]';
       case 'huge':
-        return 'text-8xl sm:text-[11rem] md:text-[14rem] lg:text-[17rem]';
+        return 'text-9xl sm:text-[12rem] md:text-[15rem] lg:text-[18rem]';
       case 'fill':
         return settings.showSeconds
-          ? 'text-[min(16vw,26vh)]'
-          : 'text-[min(25vw,42vh)]';
+          ? 'text-[min(18vw,28vh)]'
+          : 'text-[min(28vw,46vh)]';
       default:
-        return 'text-7xl sm:text-9xl md:text-[11rem]';
+        return 'text-8xl sm:text-9xl md:text-[12rem] lg:text-[14rem]';
     }
   };
 
   const isLight = isAmbientActive ? !activeAmbient.isDark : !isDarkMode && !activeTheme.isDark;
-
-  // iOS 26 Elongation & Transformation Values
-  const fontStretchY = settings.fontStretchY ?? 1.0;
-  const letterSpacingPx = settings.letterSpacing ?? 0;
-  const fontWeightVal = settings.fontWeight ?? '700';
-  const textEffect = settings.textEffect ?? 'none';
   const depthEffect = !!settings.depthEffect;
   const depthIntensity = settings.depthIntensity ?? 60;
 
-  // Calculate text effect styles
-  const getTextEffectStyles = (): React.CSSProperties => {
-    const base: React.CSSProperties = {
-      fontFamily: selectedFont.cssFamily,
-      fontWeight: fontWeightVal as any,
-      letterSpacing: `${letterSpacingPx}px`,
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    };
+  const handleClockDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOverClock(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
 
-    if (textEffect === 'liquid') {
-      // iOS 26 Liquid Refraction & Gloss Effect
-      return {
-        ...base,
-        background: `linear-gradient(180deg, ${resolvedTextColor} 0%, ${resolvedTextColor}dd 45%, ${resolvedAccentColor} 80%, ${resolvedTextColor} 100%)`,
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
-        filter: `url(#ios26-liquid-filter) drop-shadow(0 15px 30px rgba(0,0,0,0.5))`,
-      };
+    if (!isSupportedImageFile(file)) {
+      setDragUploadMessage(`"${file.name}" is not a recognized image. Use JPG, PNG, WEBP, AVIF, HEIC, etc.`);
+      setTimeout(() => setDragUploadMessage(null), 3500);
+      return;
     }
 
-    if (textEffect === 'outline') {
-      // Sleek hollow outline typography
-      return {
-        ...base,
-        color: 'transparent',
-        WebkitTextStroke: `2.5px ${resolvedTextColor}`,
-        filter: `drop-shadow(0 8px 20px rgba(0,0,0,0.4))`,
-      };
-    }
+    setDragUploadMessage(`Applying "${file.name}" as wallpaper...`);
+    try {
+      const processed = await processImageFile(file);
+      await saveWallpaperItem('single-image', processed.dataUrl, file.name);
+      setSingleWallpaperUrl(processed.dataUrl);
 
-    if (textEffect === 'glass') {
-      // Frosted glass translucent text
-      return {
-        ...base,
-        color: 'rgba(255, 255, 255, 0.82)',
-        textShadow: `0 0 20px rgba(255,255,255,0.4), 0 10px 25px rgba(0,0,0,0.6)`,
-      };
-    }
+      // If depth effect is enabled, automatically extract and update the subject mask!
+      if (settings.depthEffect) {
+        setDragUploadMessage('Auto-detecting subject for Depth Effect...');
+        try {
+          const autoMask = await generateSubjectMask(processed.dataUrl);
+          await saveWallpaperItem('depth-mask', autoMask, 'auto-detected-subject.png');
+          setDepthMaskUrl(autoMask);
+        } catch (e) {
+          console.warn('Auto subject mask on drop skipped:', e);
+        }
+      }
 
-    if (textEffect === 'glow') {
-      // Vibrant glowing neon bloom
-      return {
-        ...base,
-        color: resolvedTextColor,
-        textShadow: `0 0 15px ${resolvedAccentColor}, 0 0 35px ${resolvedAccentColor}80, 0 0 65px ${resolvedAccentColor}40`,
-      };
+      onUpdateSettings?.({
+        wallpaperMode: 'image',
+        customWallpaperName: file.name,
+        wallpaperTimestamp: Date.now(),
+      });
+      setDragUploadMessage(`Wallpaper "${file.name}" applied!`);
+      setTimeout(() => setDragUploadMessage(null), 3000);
+    } catch {
+      setDragUploadMessage('Failed to set wallpaper.');
+      setTimeout(() => setDragUploadMessage(null), 3000);
     }
-
-    // Default clean solid text
-    return {
-      ...base,
-      color: resolvedTextColor,
-      textShadow: isAmbientActive
-        ? `0 0 35px ${activeAmbient.glowColor}, 0 0 70px ${activeAmbient.glowColor}80`
-        : settings.themeId === 'cyber-neon' || settings.themeId === 'amber-vintage'
-        ? `0 0 40px ${resolvedAccentColor}40`
-        : hasCustomMediaWallpaper
-        ? '0 4px 20px rgba(0,0,0,0.7), 0 12px 35px rgba(0,0,0,0.5)'
-        : 'none',
-    };
   };
 
   return (
@@ -512,22 +550,43 @@ export const ClockView: React.FC<ClockViewProps> = ({
         filter: `brightness(${settings.brightness}%)`,
       }}
       onClick={handleUserActivity}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDraggingOverClock(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) {
+          setIsDraggingOverClock(false);
+        }
+      }}
+      onDrop={handleClockDrop}
     >
-      {/* SVG Filters for iOS 26 Liquid Typography & Optical Effects */}
-      <svg className="absolute w-0 h-0 pointer-events-none opacity-0" aria-hidden="true">
-        <defs>
-          <filter id="ios26-liquid-filter" x="-20%" y="-20%" width="140%" height="140%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="3" result="noise" />
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale="5" xChannelSelector="R" yChannelSelector="G" result="displaced" />
-            <feGaussianBlur in="displaced" stdDeviation="0.4" result="blurred" />
-            <feMerge>
-              <feMergeNode in="displaced" />
-              <feMergeNode in="blurred" />
-            </feMerge>
-          </filter>
-        </defs>
-      </svg>
+      {/* Drag & Drop Feedback Overlay */}
+      {isDraggingOverClock && (
+        <div
+          id="clock-drop-overlay"
+          className="absolute inset-0 z-50 bg-black/75 backdrop-blur-sm border-4 border-dashed border-sky-400 flex flex-col items-center justify-center pointer-events-none transition-all duration-200"
+        >
+          <div className="p-4 rounded-2xl bg-neutral-900/90 border border-sky-500/40 text-center shadow-2xl flex flex-col items-center gap-2 max-w-sm">
+            <ImageIcon className="w-10 h-10 text-sky-400 animate-bounce" />
+            <h3 className="text-base font-bold text-white">Drop Image to Set Wallpaper</h3>
+            <p className="text-xs text-neutral-300">
+              Supports JPG, JPEG, PNG, WebP, AVIF, HEIC, GIF, SVG, and more
+            </p>
+          </div>
+        </div>
+      )}
 
+      {/* Floating Status Notification */}
+      {dragUploadMessage && (
+        <div
+          id="clock-status-toast"
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-neutral-900/90 backdrop-blur-md border border-neutral-700 text-xs font-medium text-white shadow-2xl animate-fade-in flex items-center gap-2 pointer-events-none"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+          <span>{dragUploadMessage}</span>
+        </div>
+      )}
       {/* 1. MEDIA WALLPAPERS LAYER (Single Image / Slideshow / MP4 Live Video) */}
       {settings.wallpaperMode === 'video' && videoUrl && (
         <video
@@ -547,20 +606,28 @@ export const ClockView: React.FC<ClockViewProps> = ({
       )}
 
       {settings.wallpaperMode === 'slideshow' && slideshowUrls.length > 0 && (
-        <div
-          className="absolute inset-0 w-full h-full bg-cover bg-center pointer-events-none z-0 transition-all duration-1000 ease-in-out"
+        <img
+          id="clock-wallpaper-slideshow"
+          src={slideshowUrls[currentSlideIndex] || slideshowUrls[0]}
+          alt="Wallpaper slideshow background"
+          crossOrigin="anonymous"
+          decoding="async"
+          className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none z-0 transition-all duration-1000 ease-in-out"
           style={{
-            backgroundImage: `url(${slideshowUrls[currentSlideIndex] || slideshowUrls[0]})`,
             filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
           }}
         />
       )}
 
       {settings.wallpaperMode === 'image' && singleWallpaperUrl && (
-        <div
-          className="absolute inset-0 w-full h-full bg-cover bg-center pointer-events-none z-0 transition-opacity duration-700"
+        <img
+          id="clock-wallpaper-image"
+          src={singleWallpaperUrl}
+          alt="Wallpaper background"
+          crossOrigin="anonymous"
+          decoding="async"
+          className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none z-0 transition-opacity duration-700"
           style={{
-            backgroundImage: `url(${singleWallpaperUrl})`,
             filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
           }}
         />
@@ -639,57 +706,6 @@ export const ClockView: React.FC<ClockViewProps> = ({
             <span className="hidden sm:inline">Pomodoro</span>
           </button>
 
-          {/* Quick Task Tracker Switch */}
-          {onGoToTasks && (
-            <button
-              id="clock-to-tasks-btn"
-              onClick={onGoToTasks}
-              className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-                isLight && !hasCustomMediaWallpaper
-                  ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-emerald-600'
-                  : 'border-white/10 bg-black/40 hover:bg-black/60 text-emerald-400'
-              }`}
-              title="Open Task Tracker"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Tasks</span>
-            </button>
-          )}
-
-          {/* Quick Stats & Analytics Switch */}
-          {onGoToStats && (
-            <button
-              id="clock-to-stats-btn"
-              onClick={onGoToStats}
-              className={`apple-hover flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-                isLight && !hasCustomMediaWallpaper
-                  ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-amber-600'
-                  : 'border-white/10 bg-black/40 hover:bg-black/60 text-amber-400'
-              }`}
-              title="Open Weekly Progress & Analytics"
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Stats</span>
-            </button>
-          )}
-
-          {/* Study & Work Parties Button */}
-          {onOpenParties && (
-            <button
-              id="clock-parties-btn"
-              onClick={onOpenParties}
-              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm ${
-                isLight && !hasCustomMediaWallpaper
-                  ? 'border-amber-400/50 bg-amber-50/80 hover:bg-amber-100 text-amber-800'
-                  : 'border-amber-400/40 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300'
-              }`}
-              title="Open Study & Work Parties Leaderboard"
-            >
-              <Users className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Parties</span>
-            </button>
-          )}
-
           {/* Fullscreen Button */}
           <button
             id="clock-fullscreen-btn"
@@ -718,6 +734,22 @@ export const ClockView: React.FC<ClockViewProps> = ({
             <Settings className="w-4 h-4" />
             <span className="hidden sm:inline">Customize</span>
           </button>
+
+          {/* Shortcuts Button */}
+          {onOpenShortcuts && (
+            <button
+              id="clock-shortcuts-btn"
+              onClick={onOpenShortcuts}
+              className={`apple-icon-hover p-2 rounded-xl text-xs backdrop-blur-md border cursor-pointer shadow-sm ${
+                isLight && !hasCustomMediaWallpaper
+                  ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
+                  : 'border-white/10 bg-black/40 hover:bg-black/60 text-white'
+              }`}
+              title="Keyboard Shortcuts (? or \)"
+            >
+              <Keyboard className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </header>
 
@@ -731,63 +763,8 @@ export const ClockView: React.FC<ClockViewProps> = ({
             : `translate3d(${driftOffset.x}px, ${driftOffset.y}px, 0)`,
         }}
       >
-        {/* OPTIONAL STANDBY DISPLAY WIDGETS ROW (Top bar when enabled) */}
-        {settings.showStandbyWidgets && (
-          <div
-            id="standby-widgets-container"
-            className="flex items-center justify-center gap-3 sm:gap-4 mb-4 sm:mb-6 z-30"
-          >
-            {/* 1. Date & Day Widget */}
-            {settings.standbyWidgetsDate !== false && (
-              <div
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border text-xs font-medium backdrop-blur-md shadow-sm ${
-                  hasCustomMediaWallpaper || !isLight
-                    ? 'bg-black/40 border-white/15 text-white'
-                    : 'bg-white/80 border-neutral-300 text-neutral-800'
-                }`}
-              >
-                <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                <span>{dayOfWeek.slice(0, 3)}, {monthName.slice(0, 3)} {dateNum}</span>
-              </div>
-            )}
-
-            {/* 2. Battery Widget */}
-            {settings.standbyWidgetsBattery !== false && batteryState && (
-              <div
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border text-xs font-medium backdrop-blur-md shadow-sm font-mono ${
-                  hasCustomMediaWallpaper || !isLight
-                    ? 'bg-black/40 border-white/15 text-white'
-                    : 'bg-white/80 border-neutral-300 text-neutral-800'
-                }`}
-              >
-                {batteryState.charging ? (
-                  <BatteryCharging className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                ) : (
-                  <Battery className="w-3.5 h-3.5 text-sky-400" />
-                )}
-                <span>{batteryState.level}%</span>
-                {batteryState.charging && <span className="text-[10px] text-emerald-400">Power</span>}
-              </div>
-            )}
-
-            {/* 3. Focus Mode Indicator Widget */}
-            {settings.standbyWidgetsFocusTask !== false && (
-              <div
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-medium backdrop-blur-md shadow-sm ${
-                  hasCustomMediaWallpaper || !isLight
-                    ? 'bg-black/40 border-white/15 text-neutral-200'
-                    : 'bg-white/80 border-neutral-300 text-neutral-700'
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                <span>Standby Ready</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Standard Day & Date Row (If Standby Widgets are disabled) */}
-        {!settings.showStandbyWidgets && (settings.showDayOfWeek || settings.showDate) && (
+        {/* Day & Date Row */}
+        {(settings.showDayOfWeek || settings.showDate) && (
           <div
             id="clock-date-row"
             className="w-full flex items-center justify-center text-center gap-2.5 sm:gap-3 mb-3 sm:mb-6 font-medium tracking-widest text-sm sm:text-base md:text-lg uppercase opacity-85 font-sans mx-auto"
@@ -811,23 +788,27 @@ export const ClockView: React.FC<ClockViewProps> = ({
           </div>
         )}
 
-        {/* Hero Clock Digits with iOS 26 Vertical Elongation & Layering */}
+        {/* Hero Clock Digits with Clean Authentic Typography */}
         <div
           id="clock-digits-wrapper"
           className="relative inline-flex items-center justify-center"
-          style={{
-            transform: fontStretchY !== 1.0 ? `scale(1, ${fontStretchY})` : undefined,
-            transformOrigin: 'center center',
-          }}
         >
           <div
             id="clock-primary-time"
             className={`apple-display-hover relative inline-flex items-center justify-center text-center tracking-tight leading-none select-none mx-auto ${getDigitSizeStyle()}`}
             style={{
-              ...getTextEffectStyles(),
+              fontFamily: selectedFont.cssFamily,
+              color: resolvedTextColor,
+              textShadow: isAmbientActive
+                ? `0 0 35px ${activeAmbient.glowColor}, 0 0 70px ${activeAmbient.glowColor}80`
+                : settings.themeId === 'cyber-neon' || settings.themeId === 'amber-vintage'
+                ? `0 0 40px ${resolvedAccentColor}40`
+                : hasCustomMediaWallpaper
+                ? '0 4px 20px rgba(0,0,0,0.7), 0 12px 35px rgba(0,0,0,0.5)'
+                : 'none',
               filter: depthEffect
                 ? `drop-shadow(0 ${20 * (depthIntensity / 100)}px ${30 * (depthIntensity / 100)}px rgba(0,0,0,0.9))`
-                : getTextEffectStyles().filter,
+                : undefined,
             }}
           >
             {/* Hours */}

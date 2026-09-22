@@ -19,6 +19,7 @@ import {
   Minimize,
   Trophy,
   BarChart3,
+  Keyboard,
 } from 'lucide-react';
 import { ClockSettings, PomodoroSettings, PomodoroTask } from '../types';
 import { recordTaskCompletion } from '../utils/statsStorage';
@@ -32,6 +33,7 @@ interface TaskTrackerViewProps {
   onGoToStats?: () => void;
   onOpenSettings: () => void;
   onOpenParties?: (tab?: 'leaderboard' | 'my-parties' | 'create' | 'join') => void;
+  onOpenShortcuts?: () => void;
   userName: string;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
@@ -48,6 +50,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
   onGoToStats,
   onOpenSettings,
   onOpenParties,
+  onOpenShortcuts,
   userName,
   isDarkMode,
   onToggleDarkMode,
@@ -271,39 +274,9 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
           </span>
         </div>
 
-        {/* Right Toolbar: Quick Launch to Clock, Pomodoro, Parties, Theme, Settings */}
+        {/* Right Toolbar: Quick Launch to Stats, Fullscreen, Settings */}
         <div className="flex items-center gap-2">
-          {/* Quick Launch Clock */}
-          <button
-            id="tracker-to-clock-btn"
-            onClick={onGoToClock}
-            className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
-              isDarkMode
-                ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
-                : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-            }`}
-            title="Launch Desk Clock"
-          >
-            <Clock className="w-3.5 h-3.5 text-amber-500" />
-            <span className="hidden sm:inline">Clock</span>
-          </button>
-
-          {/* Quick Launch Pomodoro */}
-          <button
-            id="tracker-to-pomodoro-btn"
-            onClick={onGoToPomodoro}
-            className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer ${
-              isDarkMode
-                ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
-                : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-            }`}
-            title="Launch Pomodoro Focus Timer"
-          >
-            <Timer className="w-3.5 h-3.5 text-sky-500" />
-            <span className="hidden sm:inline">Pomodoro</span>
-          </button>
-
-          {/* Weekly Stats & Analytics */}
+          {/* Weekly Stats & Analytics Switch */}
           {onGoToStats && (
             <button
               id="tracker-stats-btn"
@@ -317,23 +290,6 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
             >
               <BarChart3 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Stats</span>
-            </button>
-          )}
-
-          {/* Study & Work Parties */}
-          {onOpenParties && (
-            <button
-              id="tracker-parties-btn"
-              onClick={() => onOpenParties('my-parties')}
-              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border cursor-pointer shadow-sm ${
-                isDarkMode
-                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
-                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
-              }`}
-              title="Study & Work Parties"
-            >
-              <Trophy className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden md:inline">Parties</span>
             </button>
           )}
 
@@ -365,6 +321,22 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
             <Settings className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Settings</span>
           </button>
+
+          {/* Shortcuts Guide Button */}
+          {onOpenShortcuts && (
+            <button
+              id="tasks-shortcuts-btn"
+              onClick={onOpenShortcuts}
+              className={`apple-icon-hover p-2 rounded-xl border text-xs cursor-pointer shadow-sm ${
+                isDarkMode
+                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
+                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
+              }`}
+              title="Keyboard Shortcuts (? or \)"
+            >
+              <Keyboard className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </header>
 

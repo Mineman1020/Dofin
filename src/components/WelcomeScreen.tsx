@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Check,
   BarChart3,
+  Keyboard,
 } from 'lucide-react';
 import { ClockSettings, PomodoroSettings, ViewMode } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS } from '../utils/constants';
@@ -27,6 +28,7 @@ interface WelcomeScreenProps {
   onOpenSettings: () => void;
   onOpenNameModal: () => void;
   onOpenParties?: (tab?: 'leaderboard' | 'my-parties' | 'create' | 'join') => void;
+  onOpenShortcuts?: () => void;
   clockSettings: ClockSettings;
   pomodoroSettings: PomodoroSettings;
   isDarkMode: boolean;
@@ -39,6 +41,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onOpenSettings,
   onOpenNameModal,
   onOpenParties,
+  onOpenShortcuts,
   clockSettings,
   pomodoroSettings,
   isDarkMode,
@@ -577,6 +580,28 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </div>
           </div>
         )}
+
+        {/* Subtle Keyboard Shortcuts Hint below parties tile */}
+        <div className="w-full text-center mt-3 sm:mt-4 pb-1">
+          <button
+            id="welcome-shortcuts-hint-btn"
+            type="button"
+            onClick={onOpenShortcuts}
+            className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors cursor-pointer group py-1 px-3 rounded-full hover:bg-neutral-200/50 dark:hover:bg-neutral-800/60"
+            title="Open Keyboard Shortcuts Guide (? or \)"
+          >
+            <Keyboard className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+            <span>Press</span>
+            <kbd className="font-mono font-bold text-[10px] sm:text-[11px] px-1.5 py-0.5 rounded border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 shadow-2xs">
+              ?
+            </kbd>
+            <span>or</span>
+            <kbd className="font-mono font-bold text-[10px] sm:text-[11px] px-1.5 py-0.5 rounded border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 shadow-2xs">
+              \
+            </kbd>
+            <span>to display shortcuts</span>
+          </button>
+        </div>
       </main>
     </div>
   );

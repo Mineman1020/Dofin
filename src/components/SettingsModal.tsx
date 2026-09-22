@@ -31,7 +31,7 @@ import {
   SlidersHorizontal,
   Trash2,
   RefreshCw,
-  LayoutTemplate,
+  Wand2,
 } from 'lucide-react';
 import {
   ClockSettings,
@@ -41,7 +41,6 @@ import {
   SoundAlertChoice,
   AmbientThemeId,
   WallpaperMode,
-  ClockTextEffect,
 } from '../types';
 import {
   THEME_PRESETS,
@@ -65,6 +64,8 @@ import {
   removeWallpaperItem,
   getStorageUsage,
 } from '../utils/wallpaperStorage';
+import { processImageFile, isSupportedImageFile } from '../utils/imageProcessor';
+import { generateSubjectMask } from '../utils/subjectSegmenter';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -118,7 +119,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [hasCustomVideo, setHasCustomVideo] = useState<boolean>(false);
   const [hasSingleImage, setHasSingleImage] = useState<boolean>(false);
   const [hasDepthMask, setHasDepthMask] = useState<boolean>(false);
+  const [depthMaskPreviewUrl, setDepthMaskPreviewUrl] = useState<string | null>(null);
+  const [isAutoSegmenting, setIsAutoSegmenting] = useState<boolean>(false);
+  const [segmentSensitivity, setSegmentSensitivity] = useState<'low' | 'balanced' | 'high'>('balanced');
   const [previewWallpaperUrl, setPreviewWallpaperUrl] = useState<string | null>(null);
+  const [isDraggingPhoto, setIsDraggingPhoto] = useState<boolean>(false);
 
   const fileInputSingleRef = useRef<HTMLInputElement | null>(null);
   const fileInputSlideshowRef = useRef<HTMLInputElement | null>(null);
@@ -154,6 +159,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       const depth = await getWallpaperItem('depth-mask');
       setHasDepthMask(!!depth);
+      if (depth && depth.data) {
+        if (typeof depth.data === 'string') {
+          setDepthMaskPreviewUrl(depth.data);
+        } else if (depth.data instanceof Blob) {
+          setDepthMaskPreviewUrl(URL.createObjectURL(depth.data as Blob));
+        }
+      } else {
+        setDepthMaskPreviewUrl(null);
+      }
     } catch {
       // Ignore
     }
@@ -165,30 +179,117 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   }, [isOpen]);
 
+  const handleAutoExtractSubjectMask = async (sensitivity = segmentSensitivity) => {
+    let sourceDataUrl = previewWallpaperUrl;
+    if (!sourceDataUrl) {
+      const item = await getWallpaperItem('single-image');
+      if (item && item.data) {
+        if (typeof item.data === 'string') {
+          sourceDataUrl = item.data;
+        } else if (item.data instanceof Blob) {
+          sourceDataUrl = URL.createObjectURL(item.data as Blob);
+        }
+      }
+    }
+
+    if (!sourceDataUrl) {
+      setUploadStatusMsg('Please select or upload a wallpaper photo first.');
+      setTimeout(() => setUploadStatusMsg(null), 3000);
+      return;
+    }
+
+    setIsAutoSegmenting(true);
+    setWallpaperLoading(true);
+    setUploadStatusMsg('Analyzing photo & detecting main subject...');
+
+    try {
+      const maskDataUrl = await generateSubjectMask(sourceDataUrl, {
+        sensitivity,
+        onProgress: (status) => setUploadStatusMsg(status),
+      });
+
+      await saveWallpaperItem('depth-mask', maskDataUrl, 'auto-detected-subject.png');
+      setHasDepthMask(true);
+      setDepthMaskPreviewUrl(maskDataUrl);
+      onUpdateClockSettings({
+        depthEffect: true,
+        wallpaperTimestamp: Date.now(),
+      });
+      await refreshStorageStats();
+      setUploadStatusMsg('✨ Main subject extracted automatically!');
+      setTimeout(() => setUploadStatusMsg(null), 3500);
+    } catch (err) {
+      console.error('Failed auto subject masking:', err);
+      setUploadStatusMsg('Could not auto-extract subject from this image.');
+      setTimeout(() => setUploadStatusMsg(null), 3500);
+    } finally {
+      setIsAutoSegmenting(false);
+      setWallpaperLoading(false);
+    }
+  };
+
+  const handleToggleDepthEffect = async (enable: boolean) => {
+    onUpdateClockSettings({ depthEffect: enable });
+    if (enable && !hasDepthMask) {
+      await handleAutoExtractSubjectMask();
+    }
+  };
+
+  const handleSingleImageFileProcess = async (file: File) => {
+    if (!isSupportedImageFile(file)) {
+      setUploadStatusMsg(`Unsupported file type: ${file.name}. Please upload JPG, PNG, WEBP, AVIF, GIF, BMP, or SVG.`);
+      setTimeout(() => setUploadStatusMsg(null), 4000);
+      return;
+    }
+
+    setWallpaperLoading(true);
+    setUploadStatusMsg(`Optimizing photo "${file.name}"...`);
+    try {
+      const processed = await processImageFile(file);
+      setUploadStatusMsg(`Saving ${processed.format} (${(processed.sizeBytes / (1024 * 1024)).toFixed(1)} MB)...`);
+      await saveWallpaperItem('single-image', processed.dataUrl, file.name);
+      setPreviewWallpaperUrl(processed.dataUrl);
+      setHasSingleImage(true);
+
+      // If depth effect is enabled, automatically extract subject from newly uploaded photo!
+      if (clockSettings.depthEffect) {
+        try {
+          setUploadStatusMsg('Auto-detecting subject for Depth Effect...');
+          const maskDataUrl = await generateSubjectMask(processed.dataUrl, {
+            sensitivity: segmentSensitivity,
+          });
+          await saveWallpaperItem('depth-mask', maskDataUrl, 'auto-detected-subject.png');
+          setHasDepthMask(true);
+          setDepthMaskPreviewUrl(maskDataUrl);
+        } catch (e) {
+          console.warn('Auto depth mask generation skipped:', e);
+        }
+      }
+
+      onUpdateClockSettings({
+        wallpaperMode: 'image',
+        customWallpaperName: file.name,
+        wallpaperTimestamp: Date.now(),
+      });
+      await refreshStorageStats();
+      setWallpaperLoading(false);
+      setUploadStatusMsg(`Wallpaper "${file.name}" applied successfully!`);
+      setTimeout(() => setUploadStatusMsg(null), 3500);
+    } catch (err) {
+      console.error('Failed to save photo wallpaper:', err);
+      setWallpaperLoading(false);
+      setUploadStatusMsg('Failed to process image. Please try another image.');
+      setTimeout(() => setUploadStatusMsg(null), 4000);
+    }
+  };
+
   const handleSingleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setWallpaperLoading(true);
-    setUploadStatusMsg(`Saving photo "${file.name}" to high-capacity storage...`);
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const dataUrl = reader.result as string;
-        await saveWallpaperItem('single-image', dataUrl, file.name);
-        setPreviewWallpaperUrl(dataUrl);
-        onUpdateClockSettings({
-          wallpaperMode: 'image',
-          customWallpaperName: file.name,
-        });
-        await refreshStorageStats();
-        setWallpaperLoading(false);
-        setUploadStatusMsg(`Wallpaper "${file.name}" saved!`);
-        setTimeout(() => setUploadStatusMsg(null), 3500);
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      setWallpaperLoading(false);
-      setUploadStatusMsg('Failed to save wallpaper.');
+      await handleSingleImageFileProcess(file);
+    } finally {
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -196,30 +297,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const files = e.target.files;
     if (!files || files.length === 0) return;
     setWallpaperLoading(true);
-    setUploadStatusMsg(`Saving ${files.length} wallpapers to offline storage...`);
+    setUploadStatusMsg(`Processing ${files.length} wallpapers...`);
     try {
       const urls: string[] = [];
-      const fileList = Array.from(files);
-      for (const f of fileList) {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(f);
-        });
-        urls.push(dataUrl);
+      const fileList: File[] = Array.from(files);
+      for (let i = 0; i < fileList.length; i++) {
+        const f = fileList[i];
+        setUploadStatusMsg(`Optimizing photo ${i + 1} of ${fileList.length} (${f.name})...`);
+        const processed = await processImageFile(f);
+        urls.push(processed.dataUrl);
       }
       await saveWallpaperItem('slideshow-images', urls, `${fileList.length} photos`);
+      setSlideshowCount(urls.length);
       onUpdateClockSettings({
         wallpaperMode: 'slideshow',
+        wallpaperTimestamp: Date.now(),
       });
       await refreshStorageStats();
       setWallpaperLoading(false);
       setUploadStatusMsg(`Added ${urls.length} photos to slideshow!`);
       setTimeout(() => setUploadStatusMsg(null), 3500);
-    } catch {
+    } catch (err) {
+      console.error('Failed to process slideshow files:', err);
       setWallpaperLoading(false);
       setUploadStatusMsg('Failed to process slideshow files.');
+      setTimeout(() => setUploadStatusMsg(null), 4000);
+    } finally {
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -288,6 +392,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         wallpaperMode: 'theme',
       });
     } else if (type === 'depth-mask') {
+      setDepthMaskPreviewUrl(null);
+      setHasDepthMask(false);
       onUpdateClockSettings({
         depthEffect: false,
       });
@@ -431,7 +537,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     >
       <div
         id="settings-modal-container"
-        className="w-full max-w-2xl max-h-[92vh] bg-neutral-900 border border-neutral-800 text-neutral-100 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        className="w-full max-w-5xl xl:max-w-6xl max-h-[92vh] bg-neutral-900 border border-neutral-800 text-neutral-100 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
       >
         {/* Header with Dark Mode Toggle */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-neutral-800 bg-neutral-900/95">
@@ -545,19 +651,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             style={{
               backgroundColor: activeTab === 'pomodoro' ? resolvedPomoTheme.bg : isAmbientActive ? undefined : activeBg,
               background:
-                activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl
-                  ? `url(${previewWallpaperUrl}) center/cover no-repeat`
-                  : activeTab === 'clock' && isAmbientActive
+                activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme')
                   ? activeAmbientTheme.bgGradient
                   : undefined,
               color: activeTab === 'pomodoro' ? resolvedPomoTheme.textColor : activeTextColor,
               filter: activeTab === 'clock' ? `brightness(${clockSettings.brightness}%)` : 'none',
             }}
           >
+            {/* Custom Photo Wallpaper Preview Image */}
+            {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
+              <img
+                src={previewWallpaperUrl}
+                alt="Wallpaper preview"
+                className="absolute inset-0 w-full h-full object-cover pointer-events-none rounded-2xl z-0"
+                style={{
+                  filter: clockSettings.wallpaperBlur ? `blur(${clockSettings.wallpaperBlur}px)` : undefined,
+                }}
+              />
+            )}
+
             {/* Wallpaper Dimmer Overlay for Preview */}
             {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
               <div
-                className="absolute inset-0 bg-black pointer-events-none rounded-2xl"
+                className="absolute inset-0 bg-black pointer-events-none rounded-2xl z-[1]"
                 style={{ opacity: (clockSettings.wallpaperOpacity ?? 25) / 100 }}
               />
             )}
@@ -572,7 +688,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
 
             {activeTab === 'clock' ? (
-              <div className="relative z-10">
+              <div className="relative z-10 w-full flex flex-col items-center">
                 {(clockSettings.showDayOfWeek || clockSettings.showDate) && (
                   <div className="text-[11px] tracking-wider uppercase opacity-75 mb-1 font-sans">
                     {clockSettings.showDayOfWeek && <span>Thursday </span>}
@@ -584,22 +700,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="text-3xl sm:text-4xl tracking-wider flex items-baseline justify-center transition-all duration-200"
                   style={{
                     fontFamily: selectedFont.cssFamily,
-                    transform: `scaleY(${clockSettings.fontStretchY ?? 1.0})`,
-                    letterSpacing: `${clockSettings.letterSpacing ?? 0}px`,
-                    fontWeight: Number(clockSettings.fontWeight || '700'),
-                    textShadow:
-                      clockSettings.textEffect === 'glow'
-                        ? `0 0 16px ${activeAccentColor}, 0 0 28px ${activeAccentColor}`
-                        : isAmbientActive
-                        ? `0 0 20px ${activeAmbientTheme.glowColor}`
-                        : 'none',
-                    WebkitTextStroke:
-                      clockSettings.textEffect === 'outline' ? '1.5px currentColor' : undefined,
-                    color: clockSettings.textEffect === 'outline' ? 'transparent' : undefined,
-                    filter:
-                      clockSettings.textEffect === 'liquid'
-                        ? 'drop-shadow(0 2px 8px rgba(255,255,255,0.45))'
-                        : undefined,
+                    color: activeTextColor,
+                    textShadow: isAmbientActive
+                      ? `0 0 20px ${activeAmbientTheme.glowColor}`
+                      : 'none',
                   }}
                 >
                   <span>10:45</span>
@@ -1432,165 +1536,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 )}
 
-                {/* 1. iOS 26 TYPOGRAPHY & TEXT STRETCHER */}
-                <div className="space-y-4 p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
-                      <Type className="w-3.5 h-3.5 text-sky-400" />
-                      <span>iOS 26 Typography & Font Stretcher</span>
-                    </span>
-                    <span className="text-[10px] text-neutral-500 font-mono">Dynamic Stretch</span>
-                  </div>
-
-                  {/* Vertical Elongation (Font Stretch Y) */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-neutral-300 font-medium">Vertical Elongation (Height Stretch)</span>
-                      <span className="font-mono text-sky-400 font-bold bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
-                        {(clockSettings.fontStretchY ?? 1.0).toFixed(2)}x
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.8}
-                      max={2.2}
-                      step={0.05}
-                      value={clockSettings.fontStretchY ?? 1.0}
-                      onChange={(e) =>
-                        onUpdateClockSettings({ fontStretchY: parseFloat(e.target.value) })
-                      }
-                      className="w-full accent-sky-400 cursor-pointer"
-                    />
-                    <div className="grid grid-cols-4 gap-1.5 pt-1">
-                      {[
-                        { label: 'Normal', value: 1.0 },
-                        { label: 'Tall', value: 1.25 },
-                        { label: 'iOS 26', value: 1.5 },
-                        { label: 'Monumental', value: 1.85 },
-                      ].map((preset) => {
-                        const isCurrent = Math.abs((clockSettings.fontStretchY ?? 1.0) - preset.value) < 0.04;
-                        return (
-                          <button
-                            key={preset.label}
-                            type="button"
-                            onClick={() => onUpdateClockSettings({ fontStretchY: preset.value })}
-                            className={`py-1 px-2 rounded-lg text-xs font-mono transition-all cursor-pointer ${
-                              isCurrent
-                                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold'
-                                : 'bg-neutral-800/80 text-neutral-400 hover:text-neutral-200 border border-transparent'
-                            }`}
-                          >
-                            {preset.label} ({preset.value}x)
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Letter Spacing */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-neutral-300 font-medium">Letter Spacing (Kerning)</span>
-                      <span className="font-mono text-neutral-400">{clockSettings.letterSpacing ?? 0}px</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={-4}
-                      max={16}
-                      step={1}
-                      value={clockSettings.letterSpacing ?? 0}
-                      onChange={(e) =>
-                        onUpdateClockSettings({ letterSpacing: parseInt(e.target.value, 10) })
-                      }
-                      className="w-full accent-sky-400 cursor-pointer"
-                    />
-                  </div>
-
-                  {/* Font Weight */}
-                  <div className="space-y-1.5 pt-1">
-                    <span className="text-xs text-neutral-300 font-medium block">Typography Weight</span>
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {[
-                        { label: 'Light', value: '300' },
-                        { label: 'Regular', value: '400' },
-                        { label: 'Semibold', value: '600' },
-                        { label: 'Bold', value: '700' },
-                        { label: 'Heavy', value: '900' },
-                      ].map((w) => {
-                        const isSelected = (clockSettings.fontWeight ?? '700') === w.value;
-                        return (
-                          <button
-                            key={w.value}
-                            type="button"
-                            onClick={() => onUpdateClockSettings({ fontWeight: w.value as any })}
-                            className={`py-1 px-1.5 rounded-lg text-xs transition-all cursor-pointer text-center ${
-                              isSelected
-                                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold'
-                                : 'bg-neutral-800/60 text-neutral-400 hover:text-neutral-200 border border-transparent'
-                            }`}
-                          >
-                            {w.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* iOS 26 Text Style & Refraction Effects */}
-                  <div className="space-y-2 pt-1">
-                    <span className="text-xs text-neutral-300 font-medium block">
-                      Time Text Refraction & Effect
-                    </span>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {[
-                        {
-                          id: 'none',
-                          label: 'Solid Classic',
-                          desc: 'Crisp flat color',
-                        },
-                        {
-                          id: 'liquid',
-                          label: 'iOS 26 Liquid',
-                          desc: 'Fluid glass refraction',
-                        },
-                        {
-                          id: 'outline',
-                          label: 'Lockscreen Outline',
-                          desc: 'Sleek contour stroke',
-                        },
-                        {
-                          id: 'glass',
-                          label: 'Frosted Translucent',
-                          desc: 'Backdrop glass blur',
-                        },
-                        {
-                          id: 'glow',
-                          label: 'Neon Halo Glow',
-                          desc: 'Ambient luminous halo',
-                        },
-                      ].map((effect) => {
-                        const isSelected = (clockSettings.textEffect ?? 'none') === effect.id;
-                        return (
-                          <button
-                            key={effect.id}
-                            type="button"
-                            onClick={() => onUpdateClockSettings({ textEffect: effect.id as ClockTextEffect })}
-                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                              isSelected
-                                ? 'border-sky-500 bg-sky-500/15 text-white font-semibold shadow-sm'
-                                : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800/80 text-neutral-400 hover:text-neutral-200'
-                            }`}
-                          >
-                            <span className="text-xs font-semibold text-neutral-200">{effect.label}</span>
-                            <span className="text-[10px] text-neutral-500 mt-0.5">{effect.desc}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. WALLPAPER ENGINE (Image, Slideshow & Live MP4) */}
+                {/* 1. STANDBY WALLPAPER ENGINE (Image, Slideshow & Live MP4) */}
                 <div className="space-y-4 p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
@@ -1643,7 +1589,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleClearWallpaper('single-image')}
-                            className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                            className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer transition-colors"
                           >
                             <Trash2 className="w-3 h-3" />
                             <span>Remove</span>
@@ -1651,28 +1597,92 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         )}
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      {/* Drag & Drop / Click Zone */}
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDraggingPhoto(true);
+                        }}
+                        onDragLeave={() => setIsDraggingPhoto(false)}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          setIsDraggingPhoto(false);
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) {
+                            await handleSingleImageFileProcess(file);
+                          }
+                        }}
+                        onClick={() => fileInputSingleRef.current?.click()}
+                        className={`p-4 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-2.5 ${
+                          isDraggingPhoto
+                            ? 'border-sky-400 bg-sky-500/10 scale-[1.01]'
+                            : hasSingleImage
+                            ? 'border-neutral-700 hover:border-sky-500/60 bg-neutral-900/50 hover:bg-neutral-900/80'
+                            : 'border-neutral-800 hover:border-sky-500/50 bg-neutral-900/30 hover:bg-neutral-900/60'
+                        }`}
+                      >
                         <input
                           ref={fileInputSingleRef}
                           type="file"
-                          accept="image/*"
+                          accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.svg,.jfif,.pjpeg,.heic,.heif,.JPG,.JPEG,.PNG"
                           className="hidden"
                           onChange={handleSingleImageUpload}
                         />
-                        <button
-                          type="button"
-                          onClick={() => fileInputSingleRef.current?.click()}
-                          disabled={wallpaperLoading}
-                          className="px-4 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>{hasSingleImage ? 'Choose New Photo' : 'Upload Photo Wallpaper'}</span>
-                        </button>
-                        {clockSettings.customWallpaperName && (
-                          <span className="text-xs font-mono text-neutral-400 truncate max-w-xs">
-                            {clockSettings.customWallpaperName}
-                          </span>
+
+                        {hasSingleImage && previewWallpaperUrl ? (
+                          <div className="w-full flex items-center gap-3 text-left">
+                            <img
+                              src={previewWallpaperUrl}
+                              alt="Loaded Wallpaper"
+                              className="w-14 h-14 rounded-lg object-cover border border-neutral-700 shadow-md shrink-0"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-semibold text-white truncate">
+                                {clockSettings.customWallpaperName || 'Current Photo Wallpaper'}
+                              </div>
+                              <p className="text-[11px] text-neutral-400 mt-0.5">
+                                Active on standby screen • Click or drop new photo to replace
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-1.5">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                  ✓ Ready
+                                </span>
+                                <span className="text-[10px] text-sky-400 hover:underline">
+                                  Change Photo...
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="w-10 h-10 rounded-full bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+                              <Upload className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-white">
+                                Drop your image here, or <span className="text-sky-400 underline">browse</span>
+                              </p>
+                              <p className="text-[11px] text-neutral-400 mt-0.5">
+                                High-res photos are automatically optimized for instant display
+                              </p>
+                            </div>
+                          </>
                         )}
+                      </div>
+
+                      {/* Format Badges */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mr-1">
+                          Supported Formats:
+                        </span>
+                        {['JPG / JPEG', 'PNG', 'WebP', 'AVIF', 'GIF', 'BMP', 'SVG', 'HEIC'].map((fmt) => (
+                          <span
+                            key={fmt}
+                            className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-neutral-900 border border-neutral-800 text-neutral-400"
+                          >
+                            {fmt}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -1703,7 +1713,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <input
                           ref={fileInputSlideshowRef}
                           type="file"
-                          accept="image/*"
+                          accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.svg,.jfif,.pjpeg,.heic,.heif,.JPG,.JPEG,.PNG"
                           multiple
                           className="hidden"
                           onChange={handleSlideshowUpload}
@@ -1846,7 +1856,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 {/* 3. STANDBY DEPTH EFFECT (SPATIAL LAYERING BEHIND SUBJECT) */}
-                <div className="space-y-3 p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
+                <div className="space-y-3.5 p-4 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
@@ -1861,7 +1871,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <input
                         type="checkbox"
                         checked={!!clockSettings.depthEffect}
-                        onChange={(e) => onUpdateClockSettings({ depthEffect: e.target.checked })}
+                        onChange={(e) => handleToggleDepthEffect(e.target.checked)}
                         className="sr-only peer"
                       />
                       <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
@@ -1869,7 +1879,141 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {clockSettings.depthEffect && (
-                    <div className="space-y-3 pt-2 border-t border-neutral-800">
+                    <div className="space-y-3.5 pt-2 border-t border-neutral-800">
+                      {/* Automated Subject Masking Panel */}
+                      <div className="p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-800/90 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center">
+                              <Wand2 className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                              <span className="text-xs font-semibold text-neutral-200 block">
+                                Automatic Subject Masking
+                              </span>
+                              <span className="text-[10px] text-neutral-400">
+                                The app automatically identifies and cuts out the main subject
+                              </span>
+                            </div>
+                          </div>
+                          {hasDepthMask && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
+                              Active Cutout
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Preview or Extraction Button */}
+                        {depthMaskPreviewUrl ? (
+                          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-neutral-900 border border-neutral-800">
+                            {/* Mask Thumbnail with Checkerboard background */}
+                            <div
+                              className="w-14 h-14 rounded-lg border border-neutral-700 overflow-hidden relative flex-shrink-0 bg-[radial-gradient(#333_1px,transparent_1px)] bg-[size:8px_8px] bg-neutral-950"
+                              title="Extracted subject foreground cutout"
+                            >
+                              <img
+                                src={depthMaskPreviewUrl}
+                                alt="Detected Subject Cutout"
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-neutral-200 truncate">
+                                Main Subject Cutout Ready
+                              </p>
+                              <p className="text-[10px] text-neutral-400 mt-0.5">
+                                Clock digits are positioned behind this extracted layer.
+                              </p>
+
+                              {/* Sensitivity Selector */}
+                              <div className="flex items-center gap-1.5 mt-2">
+                                <span className="text-[10px] text-neutral-400">Detail:</span>
+                                {(['low', 'balanced', 'high'] as const).map((s) => (
+                                  <button
+                                    key={s}
+                                    type="button"
+                                    onClick={() => {
+                                      setSegmentSensitivity(s);
+                                      handleAutoExtractSubjectMask(s);
+                                    }}
+                                    disabled={isAutoSegmenting}
+                                    className={`text-[10px] px-2 py-0.5 rounded capitalize transition-colors ${
+                                      segmentSensitivity === s
+                                        ? 'bg-sky-500/30 text-sky-300 border border-sky-500/50'
+                                        : 'bg-neutral-800 text-neutral-400 hover:text-neutral-200'
+                                    }`}
+                                  >
+                                    {s}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleAutoExtractSubjectMask()}
+                                disabled={isAutoSegmenting}
+                                className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors"
+                                title="Re-detect subject with current wallpaper"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isAutoSegmenting ? 'animate-spin' : ''}`} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleClearWallpaper('depth-mask')}
+                                className="p-1.5 rounded-lg bg-neutral-800 hover:bg-rose-900/40 text-neutral-400 hover:text-rose-400 transition-colors"
+                                title="Remove depth mask"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => handleAutoExtractSubjectMask()}
+                              disabled={isAutoSegmenting}
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+                            >
+                              {isAutoSegmenting ? (
+                                <>
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Analyzing Photo & Segmenting Subject...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Wand2 className="w-3.5 h-3.5" />
+                                  <span>Auto-Detect & Mask Main Subject</span>
+                                </>
+                              )}
+                            </button>
+                            <p className="text-[10px] text-neutral-400 text-center">
+                              No manual cutout needed. The web app isolates the person, pet, or object automatically.
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Optional Manual PNG Override */}
+                        <div className="pt-2 border-t border-neutral-900 flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-500">Optional: Use custom edited PNG</span>
+                          <input
+                            ref={fileInputDepthMaskRef}
+                            type="file"
+                            accept="image/png,image/webp"
+                            className="hidden"
+                            onChange={handleDepthMaskUpload}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => fileInputDepthMaskRef.current?.click()}
+                            className="text-neutral-400 hover:text-neutral-200 underline text-[10px] cursor-pointer"
+                          >
+                            Upload custom file
+                          </button>
+                        </div>
+                      </div>
+
                       {/* Depth Intensity */}
                       <div className="space-y-1.5">
                         <div className="flex justify-between items-center text-xs">
@@ -1888,137 +2032,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           className="w-full accent-sky-400 cursor-pointer"
                         />
                       </div>
-
-                      {/* Foreground Mask Cutout Uploader */}
-                      <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800 flex items-center justify-between gap-2">
-                        <div>
-                          <span className="text-xs font-semibold text-neutral-300 block">
-                            Foreground Subject Cutout Mask (Optional)
-                          </span>
-                          <span className="text-[10px] text-neutral-500">
-                            Upload a transparent PNG cutout of the subject to overlay above the time numbers.
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            ref={fileInputDepthMaskRef}
-                            type="file"
-                            accept="image/png,image/webp"
-                            className="hidden"
-                            onChange={handleDepthMaskUpload}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => fileInputDepthMaskRef.current?.click()}
-                            className="px-2.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium cursor-pointer"
-                          >
-                            {hasDepthMask ? 'Change Cutout' : 'Upload PNG'}
-                          </button>
-                          {hasDepthMask && (
-                            <button
-                              type="button"
-                              onClick={() => handleClearWallpaper('depth-mask')}
-                              className="text-xs text-rose-400 hover:text-rose-300"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 4. OPTIONAL STANDBY DESK WIDGETS */}
-                <div className="space-y-3 p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
-                        <LayoutTemplate className="w-3.5 h-3.5 text-sky-400" />
-                        <span>Standby Desk Widgets (Optional)</span>
-                      </span>
-                      <span className="text-[11px] text-neutral-400 block mt-0.5">
-                        Enable or completely turn off ambient glanceable widgets.
-                      </span>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={clockSettings.showStandbyWidgets !== false}
-                        onChange={(e) => onUpdateClockSettings({ showStandbyWidgets: e.target.checked })}
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
-                    </label>
-                  </div>
-
-                  {clockSettings.showStandbyWidgets !== false && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                      {/* Date Widget */}
-                      <label
-                        className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
-                          clockSettings.standbyWidgetsDate !== false
-                            ? 'bg-sky-500/10 border-sky-500/30 text-white'
-                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
-                        }`}
-                      >
-                        <div className="text-left">
-                          <span className="text-xs font-medium block">Date & Calendar</span>
-                          <span className="text-[10px] text-neutral-500">Month & Day card</span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={clockSettings.standbyWidgetsDate !== false}
-                          onChange={(e) =>
-                            onUpdateClockSettings({ standbyWidgetsDate: e.target.checked })
-                          }
-                          className="w-4 h-4 rounded text-sky-500 focus:ring-sky-400 border-neutral-700"
-                        />
-                      </label>
-
-                      {/* Battery Widget */}
-                      <label
-                        className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
-                          clockSettings.standbyWidgetsBattery !== false
-                            ? 'bg-sky-500/10 border-sky-500/30 text-white'
-                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
-                        }`}
-                      >
-                        <div className="text-left">
-                          <span className="text-xs font-medium block">Battery & Power</span>
-                          <span className="text-[10px] text-neutral-500">Device power gauge</span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={clockSettings.standbyWidgetsBattery !== false}
-                          onChange={(e) =>
-                            onUpdateClockSettings({ standbyWidgetsBattery: e.target.checked })
-                          }
-                          className="w-4 h-4 rounded text-sky-500 focus:ring-sky-400 border-neutral-700"
-                        />
-                      </label>
-
-                      {/* Focus Task Widget */}
-                      <label
-                        className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
-                          clockSettings.standbyWidgetsFocusTask !== false
-                            ? 'bg-sky-500/10 border-sky-500/30 text-white'
-                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
-                        }`}
-                      >
-                        <div className="text-left">
-                          <span className="text-xs font-medium block">Focus Intention</span>
-                          <span className="text-[10px] text-neutral-500">Active study mode</span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={clockSettings.standbyWidgetsFocusTask !== false}
-                          onChange={(e) =>
-                            onUpdateClockSettings({ standbyWidgetsFocusTask: e.target.checked })
-                          }
-                          className="w-4 h-4 rounded text-sky-500 focus:ring-sky-400 border-neutral-700"
-                        />
-                      </label>
                     </div>
                   )}
                 </div>
