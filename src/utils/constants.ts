@@ -353,6 +353,8 @@ export const DEFAULT_CLOCK_SETTINGS: ClockSettings = {
   slideshowIntervalSeconds: 30,
   depthEffect: false,
   depthIntensity: 60,
+  introEffect: 'chronos',
+  introSound: true,
 };
 
 export const POMODORO_THEME_PRESETS: PomodoroThemePreset[] = [

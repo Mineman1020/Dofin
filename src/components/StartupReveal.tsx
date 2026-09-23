@@ -1,155 +1,139 @@
-import React, { useState, useEffect } from 'react';
-import { Clock, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Clock } from 'lucide-react';
+import { playIntroEffectSound } from '../utils/audio';
 
 interface StartupRevealProps {
   onComplete: () => void;
-  userName?: string;
   isDarkMode?: boolean;
 }
 
 export const StartupReveal: React.FC<StartupRevealProps> = ({
   onComplete,
-  userName,
   isDarkMode = false,
 }) => {
-  const [phase, setPhase] = useState<'entering' | 'holding' | 'exiting'>('entering');
-  const [greeting, setGreeting] = useState<string>('Welcome');
+  // 'initial' -> 'showing' (paused stationary for ~1.1s) -> 'zooming' (smooth hardware-accelerated spread) -> 'complete'
+  const [stage, setStage] = useState<'initial' | 'showing' | 'zooming' | 'complete'>('initial');
+  const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
 
   useEffect(() => {
-    const hours = new Date().getHours();
-    if (hours >= 5 && hours < 12) setGreeting('Good morning');
-    else if (hours >= 12 && hours < 17) setGreeting('Good afternoon');
-    else if (hours >= 17 && hours < 21) setGreeting('Good evening');
-    else setGreeting('Good night');
+    // 1. Soft audio chime on launch
+    try {
+      playIntroEffectSound('chronos');
+    } catch (e) {
+      console.debug('Audio chime error:', e);
+    }
 
-    // Phase 1: Entering (0ms - 400ms)
-    const tHold = setTimeout(() => {
-      setPhase('holding');
-    }, 450);
+    // 2. Fade in the logo immediately
+    const tShow = setTimeout(() => {
+      setStage('showing');
+    }, 40);
+    timeoutRefs.current.push(tShow);
 
-    // Phase 2: Exiting (1450ms)
-    const tExit = setTimeout(() => {
-      setPhase('exiting');
-    }, 1500);
+    // 3. Keep logo stopped/stationary for a full second so user can see it clearly, then begin the zoom
+    const tZoom = setTimeout(() => {
+      setStage('zooming');
+    }, 1250);
+    timeoutRefs.current.push(tZoom);
 
-    // Phase 3: Complete (1950ms)
+    // 4. Complete the transition and reveal the welcome screen
     const tComplete = setTimeout(() => {
+      setStage('complete');
       onComplete();
-    }, 1950);
+    }, 2050);
+    timeoutRefs.current.push(tComplete);
 
-    const handleKeyDown = () => {
-      setPhase('exiting');
-      setTimeout(onComplete, 300);
+    const handleSkip = () => {
+      setStage('zooming');
+      const tFast = setTimeout(() => {
+        setStage('complete');
+        onComplete();
+      }, 350);
+      timeoutRefs.current.push(tFast);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleSkip);
 
     return () => {
-      clearTimeout(tHold);
-      clearTimeout(tExit);
-      clearTimeout(tComplete);
-      window.removeEventListener('keydown', handleKeyDown);
+      timeoutRefs.current.forEach(clearTimeout);
+      window.removeEventListener('keydown', handleSkip);
     };
   }, [onComplete]);
 
-  const handleSkip = () => {
-    setPhase('exiting');
-    setTimeout(onComplete, 250);
-  };
+  if (stage === 'complete') return null;
+
+  const isZooming = stage === 'zooming';
+  const isShowing = stage === 'showing' || isZooming;
 
   return (
     <div
-      id="cinematic-startup-reveal"
-      onClick={handleSkip}
-      className={`fixed inset-0 z-50 flex flex-col items-center justify-center select-none cursor-pointer overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-        phase === 'exiting'
-          ? 'opacity-0 scale-[1.03] blur-sm pointer-events-none'
-          : 'opacity-100 scale-100'
-      } bg-neutral-950 text-white`}
+      id="zoom-intro-reveal"
+      onClick={() => {
+        setStage('zooming');
+        setTimeout(() => {
+          setStage('complete');
+          onComplete();
+        }, 350);
+      }}
+      className={`fixed inset-0 z-50 flex items-center justify-center select-none overflow-hidden cursor-pointer transition-opacity duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] ${
+        isZooming ? 'opacity-0 pointer-events-none' : 'opacity-100'
+      } ${isDarkMode ? 'bg-[#07090e]' : 'bg-[#0b0e14]'}`}
+      style={{
+        transform: 'translate3d(0, 0, 0)',
+        willChange: 'opacity',
+      }}
     >
-      {/* Ambient background lighting with Apple-like specular diffusion */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full bg-radial from-amber-500/15 via-sky-500/5 to-transparent blur-[140px] animate-pulse" />
-        <div className="absolute -top-32 left-1/4 w-[400px] h-[400px] rounded-full bg-amber-400/10 blur-[120px]" />
-        <div className="absolute -bottom-32 right-1/4 w-[400px] h-[400px] rounded-full bg-sky-400/10 blur-[120px]" />
-      </div>
+      {/* Ambient background radial glow - stationary, no filter animations for max FPS */}
+      <div
+        className={`absolute w-[460px] h-[460px] rounded-full bg-radial from-amber-500/18 via-amber-600/5 to-transparent pointer-events-none transition-opacity duration-600 ${
+          isZooming ? 'opacity-0' : 'opacity-100'
+        }`}
+      />
 
-      {/* Main Center Content */}
-      <div className="relative z-10 flex flex-col items-center text-center px-6 max-w-md w-full">
-        {/* Apple-style Illuminated Monoline Clock Emblem */}
-        <div className="relative mb-8 group">
-          {/* Soft back aura */}
-          <div className="absolute inset-0 rounded-full bg-amber-400/20 blur-2xl transform scale-150 animate-pulse" />
+      {/* Main Logo Card - Perfectly Stationary for 1.1s, then smoothly spreads outward */}
+      <div
+        className="relative z-10 flex flex-col items-center justify-center"
+        style={{
+          transform: isZooming
+            ? 'translate3d(0, 0, 0) scale(8.5)'
+            : isShowing
+            ? 'translate3d(0, 0, 0) scale(1)'
+            : 'translate3d(0, 0, 0) scale(0.92)',
+          opacity: isZooming ? 0 : isShowing ? 1 : 0,
+          transition: isZooming
+            ? 'transform 750ms cubic-bezier(0.4, 0, 0.2, 1), opacity 650ms cubic-bezier(0.4, 0, 0.2, 1)'
+            : 'transform 350ms cubic-bezier(0.16, 1, 0.3, 1), opacity 350ms ease-out',
+          willChange: 'transform, opacity',
+          backfaceVisibility: 'hidden',
+        }}
+      >
+        {/* Emblem Squircle */}
+        <div className="relative mb-5">
+          <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-[2rem] bg-gradient-to-br from-amber-300 via-amber-500 to-amber-600 p-[2.5px] shadow-[0_16px_40px_rgba(245,158,11,0.35)] flex items-center justify-center">
+            {/* Obsidian Inner Face */}
+            <div className="w-full h-full rounded-[calc(2rem-2.5px)] bg-[#12151c] flex items-center justify-center relative overflow-hidden">
+              {/* Dial Ring */}
+              <div className="absolute inset-2.5 rounded-full border border-amber-400/25 pointer-events-none" />
 
-          <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-neutral-900/90 border border-white/20 shadow-2xl flex items-center justify-center backdrop-blur-xl transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-105">
-            {/* Outer subtle ticks ring */}
-            <svg
-              className="absolute inset-0 w-full h-full p-2.5 transform -rotate-90"
-              viewBox="0 0 100 100"
-            >
-              <circle
-                cx="50"
-                cy="50"
-                r="42"
-                stroke="rgba(255, 255, 255, 0.15)"
-                strokeWidth="2.5"
-                fill="none"
-              />
-              <circle
-                cx="50"
-                cy="50"
-                r="42"
-                stroke="url(#apple-startup-glow)"
-                strokeWidth="3"
-                strokeDasharray="264"
-                strokeDashoffset={phase === 'entering' ? '264' : '0'}
-                strokeLinecap="round"
-                fill="none"
-                className="transition-all duration-1000 ease-out"
-              />
-              <defs>
-                <linearGradient id="apple-startup-glow" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#f59e0b" />
-                  <stop offset="100%" stopColor="#38bdf8" />
-                </linearGradient>
-              </defs>
-            </svg>
-
-            {/* Glowing Center Icon */}
-            <Clock className="w-10 h-10 sm:w-12 sm:h-12 text-white drop-shadow-[0_0_16px_rgba(245,158,11,0.6)]" />
+              {/* Glowing Clock Monogram */}
+              <Clock className="w-12 h-12 sm:w-14 sm:h-14 text-amber-300 drop-shadow-[0_2px_12px_rgba(245,158,11,0.7)] relative z-10" />
+            </div>
           </div>
         </div>
 
-        {/* Brand & Personal Greeting */}
-        <div className="space-y-2 mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono tracking-widest uppercase text-neutral-300 backdrop-blur-md">
-            <Sparkles className="w-3 h-3 text-amber-400 animate-pulse" />
-            <span>Desk Station</span>
-          </div>
-
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-sm">
-            {greeting}
-            {userName ? `, ${userName}` : ''}
+        {/* Brand Text - Fades cleanly during the zoom */}
+        <div
+          className="text-center space-y-1"
+          style={{
+            opacity: isZooming ? 0 : 1,
+            transition: 'opacity 300ms ease-out',
+          }}
+        >
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-sm font-sans">
+            Desk Station
           </h1>
-
-          <p className="text-xs sm:text-sm text-neutral-400 font-light tracking-wide">
-            Precision • Ambiance • Focus
+          <p className="text-xs text-amber-400/90 font-mono tracking-widest uppercase">
+            Ambient Time & Focus
           </p>
-        </div>
-
-        {/* Minimal Hairline Progress Beam */}
-        <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden relative">
-          <div
-            className="h-full bg-gradient-to-r from-amber-400 via-amber-200 to-sky-400 rounded-full transition-all duration-[1400ms] ease-out shadow-[0_0_10px_rgba(245,158,11,0.8)]"
-            style={{ width: phase === 'entering' ? '20%' : '100%' }}
-          />
-        </div>
-
-        {/* Apple-style Skip Hint */}
-        <div className="mt-12 text-[11px] font-mono text-neutral-500 tracking-wider flex items-center justify-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
-          <span>Click anywhere to start</span>
-          <span className="hidden sm:inline">•</span>
-          <span className="hidden sm:inline">Press any key</span>
         </div>
       </div>
     </div>

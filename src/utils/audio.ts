@@ -729,3 +729,102 @@ export function startAmbientSoundscape(
 export function getActiveAmbientSoundType(): AmbientSoundType {
   return activeAmbientType;
 }
+
+/**
+ * Play a delicate, high-fidelity acoustic or synthesizer sound for intro reveals
+ */
+export function playIntroEffectSound(style: 'chronos' | 'zen' | 'cyber' | 'minimal' = 'chronos'): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    if (style === 'chronos') {
+      // Harmonic horology chime: soft gear clicks followed by ascending warm chime
+      const freqs = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+      freqs.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const startTime = ctx.currentTime + idx * 0.12;
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.linearRampToValueAtTime(0.08, startTime + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 1.8);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + 1.9);
+      });
+    } else if (style === 'zen') {
+      // Warm Tibetan singing bowl with acoustic harmonics
+      const baseFreq = 432; // 432Hz harmonic
+      const harmonics = [1, 2.01, 3.02];
+      harmonics.forEach((h, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const startTime = ctx.currentTime;
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(baseFreq * h, startTime);
+
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.linearRampToValueAtTime(0.09 / (idx + 1), startTime + 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 2.5);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + 2.6);
+      });
+    } else if (style === 'cyber') {
+      // Cyber warp sweep + digital confirmation arpeggio
+      const notes = [440, 660, 880, 1320];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const startTime = ctx.currentTime + idx * 0.07;
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, startTime);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.25, startTime + 0.1);
+
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.linearRampToValueAtTime(0.07, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.6);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + 0.7);
+      });
+    } else {
+      // Minimal: Two crisp crystalline chimes
+      [880, 1174.66].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const startTime = ctx.currentTime + idx * 0.15;
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.linearRampToValueAtTime(0.08, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 1.2);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + 1.3);
+      });
+    }
+  } catch (e) {
+    console.debug('Intro sound playback error:', e);
+  }
+}

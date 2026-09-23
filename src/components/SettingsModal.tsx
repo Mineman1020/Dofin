@@ -527,6 +527,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     reader.readAsDataURL(file);
   };
 
+  if (!isOpen) return null;
+
   return (
     <div
       id="settings-modal-overlay"
@@ -3228,10 +3230,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="pt-4 border-t border-neutral-800 flex items-center justify-between">
                   <div>
                     <span className="text-xs font-semibold text-neutral-200 block">
-                      Startup Reveal
+                      Startup Intro
                     </span>
                     <span className="text-[11px] text-neutral-400 block">
-                      Experience the cinematic opening reveal
+                      Experience the smooth logo zoom-in reveal
                     </span>
                   </div>
                   <button

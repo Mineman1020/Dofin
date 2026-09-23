@@ -26,32 +26,33 @@ body,
 
 /* Apple-style Fluid Spring Dynamics & Enhanced Tactile Micro-Interactions */
 .apple-hover {
-  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
-              box-shadow 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.2s ease,
               background-color 0.2s ease,
               color 0.2s ease !important;
   will-change: transform, box-shadow;
   transform: perspective(800px) translate3d(0, 0, 0);
+  cursor: pointer;
 }
 
 .apple-hover:hover {
-  transform: perspective(800px) translate3d(0, -3px, 0) scale(1.08) !important;
-  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.35),
-              0 4px 12px -2px rgba(0, 0, 0, 0.2),
-              0 0 0 1px rgba(255, 255, 255, 0.16) !important;
+  transform: perspective(800px) translate3d(0, -2.5px, 0) scale(1.04) !important;
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.38),
+              0 4px 12px -2px rgba(0, 0, 0, 0.22),
+              0 0 0 1.5px rgba(255, 255, 255, 0.24) !important;
 }
 
 .apple-hover:active {
-  transform: perspective(800px) translate3d(0, 1px, 0) scale(0.92) !important;
+  transform: perspective(800px) translate3d(0, 1px, 0) scale(0.95) !important;
   box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.25) !important;
 }
 
 /* Apple-style Card Elevation and Fluid Scaling with Specular Sheen */
 .apple-card-hover {
   position: relative;
-  transition: transform 0.4s cubic-bezier(0.34, 1.45, 0.64, 1),
-              box-shadow 0.4s cubic-bezier(0.34, 1.45, 0.64, 1),
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.25s ease,
               background-color 0.25s ease !important;
   will-change: transform, box-shadow;
@@ -63,17 +64,17 @@ body,
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.12), transparent 70%);
+  background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.15), transparent 70%);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.35s ease;
+  transition: opacity 0.28s ease;
 }
 
 .apple-card-hover:hover {
-  transform: perspective(1000px) translate3d(0, -10px, 0) scale(1.035) !important;
-  box-shadow: 0 30px 65px -15px rgba(0, 0, 0, 0.45),
-              0 12px 28px -6px rgba(0, 0, 0, 0.3),
-              0 0 0 1.5px rgba(255, 255, 255, 0.22) !important;
+  transform: perspective(1000px) translate3d(0, -8px, 0) scale(1.025) !important;
+  box-shadow: 0 28px 60px -15px rgba(0, 0, 0, 0.5),
+              0 12px 24px -6px rgba(0, 0, 0, 0.3),
+              0 0 0 1.5px rgba(255, 255, 255, 0.28) !important;
   z-index: 10;
 }
 
@@ -82,60 +83,87 @@ body,
 }
 
 .apple-card-hover:active {
-  transform: perspective(1000px) translate3d(0, -2px, 0) scale(0.985) !important;
-  box-shadow: 0 10px 25px -8px rgba(0, 0, 0, 0.3) !important;
+  transform: perspective(1000px) translate3d(0, -1px, 0) scale(0.99) !important;
+  box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.3) !important;
 }
 
 /* Apple-style Icon Button Hover */
 .apple-icon-hover {
-  transition: transform 0.28s cubic-bezier(0.34, 1.65, 0.64, 1),
-              box-shadow 0.28s cubic-bezier(0.34, 1.65, 0.64, 1),
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
               background-color 0.2s ease,
               color 0.2s ease !important;
   will-change: transform, box-shadow;
   transform: perspective(800px) translate3d(0, 0, 0);
+  cursor: pointer;
 }
 
 .apple-icon-hover:hover {
-  transform: perspective(800px) translate3d(0, -3px, 0) scale(1.22) !important;
+  transform: perspective(800px) translate3d(0, -2px, 0) scale(1.14) !important;
   box-shadow: 0 8px 22px -4px rgba(0, 0, 0, 0.35),
-              0 0 16px rgba(255, 255, 255, 0.18) !important;
+              0 0 16px rgba(255, 255, 255, 0.22) !important;
 }
 
 .apple-icon-hover:active {
-  transform: perspective(800px) translate3d(0, 1px, 0) scale(0.85) !important;
+  transform: perspective(800px) translate3d(0, 1px, 0) scale(0.88) !important;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
 }
 
 /* Apple-style Pill & Chip Hover (Timer phases, preset chips, toggles) */
 .apple-pill-hover {
-  transition: transform 0.28s cubic-bezier(0.34, 1.5, 0.64, 1),
-              box-shadow 0.28s cubic-bezier(0.34, 1.5, 0.64, 1),
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.2s ease,
               background-color 0.2s ease !important;
   will-change: transform, box-shadow;
+  cursor: pointer;
 }
 
 .apple-pill-hover:hover {
-  transform: scale(1.08) translateY(-2px) !important;
-  box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.25) !important;
+  transform: scale(1.06) translateY(-2px) !important;
+  box-shadow: 0 8px 22px -4px rgba(0, 0, 0, 0.3) !important;
 }
 
 .apple-pill-hover:active {
-  transform: scale(0.93) translateY(1px) !important;
+  transform: scale(0.95) translateY(0.5px) !important;
 }
 
 /* Apple-style Primary Clock & Timer Hover Focus */
 .apple-display-hover {
-  transition: transform 0.4s cubic-bezier(0.34, 1.35, 0.64, 1),
-              filter 0.4s ease !important;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.25s ease !important;
   will-change: transform, filter;
   cursor: default;
 }
 
 .apple-display-hover:hover {
-  transform: scale(1.025) translateY(-3px) !important;
-  filter: brightness(1.07);
+  transform: scale(1.02) translateY(-2px) !important;
+  filter: brightness(1.08);
+}
+
+/* Interactive Cursor Glow Accents - iOS 26 High-Refraction Glass */
+.hover-glow-amber:hover {
+  box-shadow: 0 24px 50px -12px rgba(245, 158, 11, 0.35),
+              0 0 25px rgba(245, 158, 11, 0.18),
+              inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+}
+
+.hover-glow-sky:hover {
+  box-shadow: 0 24px 50px -12px rgba(14, 165, 233, 0.35),
+              0 0 25px rgba(14, 165, 233, 0.18),
+              inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+}
+
+.hover-glow-emerald:hover {
+  box-shadow: 0 24px 50px -12px rgba(16, 185, 129, 0.35),
+              0 0 25px rgba(16, 185, 129, 0.18),
+              inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+}
+
+.hover-glow-violet:hover {
+  box-shadow: 0 24px 50px -12px rgba(139, 92, 246, 0.35),
+              0 0 25px rgba(139, 92, 246, 0.18),
+              inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
 }
 
 /* Custom scrollbar for settings modal */

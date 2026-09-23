@@ -72,6 +72,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
   onOpenShortcuts,
   userName,
   isDarkMode,
+  onToggleDarkMode,
 }) => {
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [chartViewMode, setChartViewMode] = useState<'combined' | 'focus' | 'tasks' | 'cumulative'>('combined');
@@ -150,7 +151,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
   // Theme styling helpers
   const bgClass = isDarkMode
     ? 'bg-neutral-950 text-neutral-100'
-    : 'bg-neutral-50 text-neutral-900';
+    : 'bg-[#f7f5f0] text-neutral-900';
   const cardBgClass = isDarkMode
     ? 'bg-neutral-900/70 border-neutral-800/80 shadow-lg'
     : 'bg-white border-neutral-200/90 shadow-sm';
@@ -209,8 +210,20 @@ export const StatsView: React.FC<StatsViewProps> = ({
       id="stats-view-container"
       className={`relative w-full h-screen overflow-hidden flex flex-col justify-between font-sans select-none transition-colors duration-500 ${bgClass}`}
     >
+      {/* Ambient background soft glow */}
+      <div
+        className={`absolute top-0 right-1/4 w-[500px] h-[350px] rounded-full blur-[150px] pointer-events-none ${
+          isDarkMode ? 'bg-amber-500/10' : 'bg-amber-500/5'
+        }`}
+      />
+      <div
+        className={`absolute bottom-0 left-1/4 w-[500px] h-[350px] rounded-full blur-[150px] pointer-events-none ${
+          isDarkMode ? 'bg-sky-500/10' : 'bg-sky-500/5'
+        }`}
+      />
+
       {/* Top Header & Navigation Bar */}
-      <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between z-20 shrink-0 border-b border-neutral-200/50 dark:border-neutral-800/50">
+      <header className="w-full px-4 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between z-20 shrink-0 border-b border-neutral-200/50 dark:border-neutral-800/50">
         <div className="flex items-center gap-3">
           <button
             id="stats-back-to-welcome-btn"
@@ -284,7 +297,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
               }`}
               title="Keyboard Shortcuts (? or \)"
             >
-              <Keyboard className="w-3.5 h-3.5" />
+              <Keyboard className="w-4 h-4" />
             </button>
           )}
 
@@ -304,8 +317,8 @@ export const StatsView: React.FC<StatsViewProps> = ({
         </div>
       </header>
 
-      {/* Main Dashboard Content - Viewport Fitted */}
-      <main className="w-full max-w-7xl mx-auto px-3 sm:px-6 py-2 sm:py-3 flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto lg:overflow-hidden">
+      {/* Main Dashboard Content - Viewport Fitted Full Width */}
+      <main className="w-full px-4 sm:px-8 py-2 sm:py-3 flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto lg:overflow-hidden">
         {/* Date Selector & Top Controls Row */}
         <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-neutral-200/50 dark:border-neutral-800/50 shrink-0">
           {/* Week Navigation */}

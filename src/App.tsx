@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ViewMode, ClockSettings, PomodoroSettings } from './types';
 import {
   DEFAULT_CLOCK_SETTINGS,
@@ -227,7 +228,13 @@ export default function App() {
         return;
       }
 
-      // 6. Direct view navigation hotkeys
+      // 6. Intro Reveal replay
+      if (e.key.toLowerCase() === 'i' && !e.ctrlKey && !e.metaKey && currentView === 'welcome') {
+        setShowStartupReveal(true);
+        return;
+      }
+
+      // 7. Direct view navigation hotkeys
       if (!isSettingsOpen && !isPartyModalOpen && !isNameModalOpen) {
         if (currentView === 'welcome') {
           if (e.key === '1' || e.key.toLowerCase() === 'c') setCurrentView('clock');
@@ -261,94 +268,105 @@ export default function App() {
         isDarkMode ? 'dark bg-neutral-950 text-neutral-100' : 'bg-[#f7f5f0] text-neutral-900'
       }`}
     >
-      {/* 1. Welcome Screen */}
-      {currentView === 'welcome' && (
-        <WelcomeScreen
-          userName={userName || 'Friend'}
-          onSelectMode={(mode) => setCurrentView(mode)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onOpenParties={handleOpenParties}
-          onOpenNameModal={() => setIsNameModalOpen(true)}
-          onOpenShortcuts={() => setIsShortcutsOpen(true)}
-          clockSettings={clockSettings}
-          pomodoroSettings={pomodoroSettings}
-          isDarkMode={isDarkMode}
-          onToggleDarkMode={handleToggleDarkMode}
-        />
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={currentView}
+          initial={{ opacity: 0, scale: 0.99, y: 6 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 1.008, y: -6 }}
+          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          className="w-full h-full min-h-screen"
+        >
+          {/* 1. Welcome Screen */}
+          {currentView === 'welcome' && (
+            <WelcomeScreen
+              userName={userName || 'Friend'}
+              onSelectMode={(mode) => setCurrentView(mode)}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenParties={handleOpenParties}
+              onOpenNameModal={() => setIsNameModalOpen(true)}
+              onOpenShortcuts={() => setIsShortcutsOpen(true)}
+              clockSettings={clockSettings}
+              pomodoroSettings={pomodoroSettings}
+              isDarkMode={isDarkMode}
+              onToggleDarkMode={handleToggleDarkMode}
+            />
+          )}
 
-      {/* 2. Desk Clock View */}
-      {currentView === 'clock' && (
-        <ClockView
-          settings={clockSettings}
-          onUpdateSettings={handleUpdateClockSettings}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onOpenParties={() => handleOpenParties('my-parties')}
-          onOpenShortcuts={() => setIsShortcutsOpen(true)}
-          onGoToWelcome={() => setCurrentView('welcome')}
-          onGoToPomodoro={() => setCurrentView('pomodoro')}
-          onGoToTasks={() => setCurrentView('tasks')}
-          onGoToStats={() => setCurrentView('stats')}
-          userName={userName || 'Friend'}
-          isDarkMode={isDarkMode}
-          onToggleDarkMode={handleToggleDarkMode}
-        />
-      )}
+          {/* 2. Desk Clock View */}
+          {currentView === 'clock' && (
+            <ClockView
+              settings={clockSettings}
+              onUpdateSettings={handleUpdateClockSettings}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenParties={() => handleOpenParties('my-parties')}
+              onOpenShortcuts={() => setIsShortcutsOpen(true)}
+              onGoToWelcome={() => setCurrentView('welcome')}
+              onGoToPomodoro={() => setCurrentView('pomodoro')}
+              onGoToTasks={() => setCurrentView('tasks')}
+              onGoToStats={() => setCurrentView('stats')}
+              userName={userName || 'Friend'}
+              isDarkMode={isDarkMode}
+              onToggleDarkMode={handleToggleDarkMode}
+            />
+          )}
 
-      {/* 3. Pomodoro Timer View */}
-      {currentView === 'pomodoro' && (
-        <PomodoroView
-          settings={pomodoroSettings}
-          clockSettings={clockSettings}
-          onUpdateSettings={handleUpdatePomodoroSettings}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onOpenParties={handleOpenParties}
-          onOpenShortcuts={() => setIsShortcutsOpen(true)}
-          onGoToClock={() => setCurrentView('clock')}
-          onGoToWelcome={() => setCurrentView('welcome')}
-          onGoToTasks={() => setCurrentView('tasks')}
-          onGoToStats={() => setCurrentView('stats')}
-          userName={userName || 'Friend'}
-          isDarkMode={isDarkMode}
-          onToggleDarkMode={handleToggleDarkMode}
-        />
-      )}
+          {/* 3. Pomodoro Timer View */}
+          {currentView === 'pomodoro' && (
+            <PomodoroView
+              settings={pomodoroSettings}
+              clockSettings={clockSettings}
+              onUpdateSettings={handleUpdatePomodoroSettings}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenParties={handleOpenParties}
+              onOpenShortcuts={() => setIsShortcutsOpen(true)}
+              onGoToClock={() => setCurrentView('clock')}
+              onGoToWelcome={() => setCurrentView('welcome')}
+              onGoToTasks={() => setCurrentView('tasks')}
+              onGoToStats={() => setCurrentView('stats')}
+              userName={userName || 'Friend'}
+              isDarkMode={isDarkMode}
+              onToggleDarkMode={handleToggleDarkMode}
+            />
+          )}
 
-      {/* 4. Standalone Task Tracker View */}
-      {currentView === 'tasks' && (
-        <TaskTrackerView
-          clockSettings={clockSettings}
-          pomodoroSettings={pomodoroSettings}
-          onGoToWelcome={() => setCurrentView('welcome')}
-          onGoToClock={() => setCurrentView('clock')}
-          onGoToPomodoro={() => setCurrentView('pomodoro')}
-          onGoToStats={() => setCurrentView('stats')}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onOpenParties={handleOpenParties}
-          onOpenShortcuts={() => setIsShortcutsOpen(true)}
-          userName={userName || 'Friend'}
-          isDarkMode={isDarkMode}
-          onToggleDarkMode={handleToggleDarkMode}
-        />
-      )}
+          {/* 4. Standalone Task Tracker View */}
+          {currentView === 'tasks' && (
+            <TaskTrackerView
+              clockSettings={clockSettings}
+              pomodoroSettings={pomodoroSettings}
+              onGoToWelcome={() => setCurrentView('welcome')}
+              onGoToClock={() => setCurrentView('clock')}
+              onGoToPomodoro={() => setCurrentView('pomodoro')}
+              onGoToStats={() => setCurrentView('stats')}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenParties={handleOpenParties}
+              onOpenShortcuts={() => setIsShortcutsOpen(true)}
+              userName={userName || 'Friend'}
+              isDarkMode={isDarkMode}
+              onToggleDarkMode={handleToggleDarkMode}
+            />
+          )}
 
-      {/* 5. Weekly Progress & Data Visualization View */}
-      {currentView === 'stats' && (
-        <StatsView
-          clockSettings={clockSettings}
-          pomodoroSettings={pomodoroSettings}
-          onGoToWelcome={() => setCurrentView('welcome')}
-          onGoToClock={() => setCurrentView('clock')}
-          onGoToPomodoro={() => setCurrentView('pomodoro')}
-          onGoToTasks={() => setCurrentView('tasks')}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onOpenParties={handleOpenParties}
-          onOpenShortcuts={() => setIsShortcutsOpen(true)}
-          userName={userName || 'Friend'}
-          isDarkMode={isDarkMode}
-          onToggleDarkMode={handleToggleDarkMode}
-        />
-      )}
+          {/* 5. Weekly Progress & Data Visualization View */}
+          {currentView === 'stats' && (
+            <StatsView
+              clockSettings={clockSettings}
+              pomodoroSettings={pomodoroSettings}
+              onGoToWelcome={() => setCurrentView('welcome')}
+              onGoToClock={() => setCurrentView('clock')}
+              onGoToPomodoro={() => setCurrentView('pomodoro')}
+              onGoToTasks={() => setCurrentView('tasks')}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenParties={handleOpenParties}
+              onOpenShortcuts={() => setIsShortcutsOpen(true)}
+              userName={userName || 'Friend'}
+              isDarkMode={isDarkMode}
+              onToggleDarkMode={handleToggleDarkMode}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
 
       {/* Settings Modal */}
       <SettingsModal
@@ -391,10 +409,9 @@ export default function App() {
         canDismiss={Boolean(userName)}
       />
 
-      {/* Cinematic Startup Reveal (Apple-style) */}
+      {/* Cinematic Startup Reveal */}
       {showStartupReveal && (
         <StartupReveal
-          userName={userName}
           isDarkMode={isDarkMode}
           onComplete={() => setShowStartupReveal(false)}
         />

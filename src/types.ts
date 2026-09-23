@@ -1,5 +1,7 @@
 export type ViewMode = 'welcome' | 'clock' | 'pomodoro' | 'tasks' | 'stats';
 
+export type IntroEffectId = 'chronos' | 'zen' | 'cyber' | 'minimal';
+
 export type ClockFontFamily =
   | 'outfit'
   | 'jetbrains'
@@ -103,6 +105,8 @@ export interface ClockSettings {
   customWallpaperName?: string;
   liveVideoName?: string;
   wallpaperTimestamp?: number;
+  introEffect?: IntroEffectId;
+  introSound?: boolean;
 }
 
 export type SoundAlertChoice =
