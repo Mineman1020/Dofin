@@ -20,6 +20,14 @@ service cloud.firestore {
         && data.currentStatus in ['focusing', 'break', 'idle'];
     }
 
+    function isValidMessage(data) {
+      return data.partyId is string
+        && data.senderId is string
+        && data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 60
+        && data.text is string && data.text.size() > 0 && data.text.size() <= 1000
+        && data.createdAt is string;
+    }
+
     // Party collection
     match /parties/{partyId} {
       allow read: if true;
@@ -32,6 +40,13 @@ service cloud.firestore {
         allow read: if true;
         allow create, update: if isValidMember(request.resource.data);
         allow delete: if true;
+      }
+
+      // Party Messages subcollection for real-time chat
+      match /messages/{messageId} {
+        allow read: if true;
+        allow create: if isValidMessage(request.resource.data);
+        allow update, delete: if resource.data.senderId == request.resource.data.senderId;
       }
     }
 

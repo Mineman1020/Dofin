@@ -15,6 +15,7 @@ import { NameModal } from './components/NameModal';
 import { PartyModal } from './components/PartyModal';
 import { StartupReveal } from './components/StartupReveal';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
+import { usePomodoroTimer } from './utils/usePomodoroTimer';
 
 const STORAGE_KEYS = {
   USER_NAME: 'desk_clock_user_name',
@@ -104,6 +105,9 @@ export default function App() {
     }
     return DEFAULT_POMODORO_SETTINGS;
   });
+
+  // Continuous Pomodoro Engine (resilient to view switching and midnight rollover)
+  const pomodoroTimer = usePomodoroTimer(pomodoroSettings);
 
   // Toggle Dark Mode
   const handleToggleDarkMode = () => {
@@ -288,6 +292,7 @@ export default function App() {
               onOpenShortcuts={() => setIsShortcutsOpen(true)}
               clockSettings={clockSettings}
               pomodoroSettings={pomodoroSettings}
+              pomodoroTimer={pomodoroTimer}
               isDarkMode={isDarkMode}
               onToggleDarkMode={handleToggleDarkMode}
             />
@@ -306,6 +311,7 @@ export default function App() {
               onGoToTasks={() => setCurrentView('tasks')}
               onGoToStats={() => setCurrentView('stats')}
               userName={userName || 'Friend'}
+              pomodoroTimer={pomodoroTimer}
               isDarkMode={isDarkMode}
               onToggleDarkMode={handleToggleDarkMode}
             />
@@ -316,6 +322,7 @@ export default function App() {
             <PomodoroView
               settings={pomodoroSettings}
               clockSettings={clockSettings}
+              timer={pomodoroTimer}
               onUpdateSettings={handleUpdatePomodoroSettings}
               onOpenSettings={() => setIsSettingsOpen(true)}
               onOpenParties={handleOpenParties}
@@ -398,6 +405,7 @@ export default function App() {
           setIsPartyModalOpen(false);
           setCurrentView('pomodoro');
         }}
+        pomodoroTimer={pomodoroTimer}
       />
 
       {/* Name Input First-Run / Update Modal */}

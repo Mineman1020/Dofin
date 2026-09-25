@@ -55,12 +55,14 @@ import {
   updatePartyMemberStatus,
   subscribeToParty,
 } from '../utils/partyService';
-import { recordFocusMinutes, recordTaskCompletion } from '../utils/statsStorage';
+import { recordTaskCompletion } from '../utils/statsStorage';
 import { AmbientBackground } from './AmbientBackground';
+import { PomodoroTimerController } from '../utils/usePomodoroTimer';
 
 interface PomodoroViewProps {
   settings: PomodoroSettings;
   clockSettings: ClockSettings;
+  timer: PomodoroTimerController;
   onUpdateSettings?: (updated: Partial<PomodoroSettings>) => void;
   onOpenSettings: () => void;
   onGoToClock: () => void;
@@ -79,6 +81,7 @@ const TASKS_STORAGE_KEY = 'desk_clock_pomodoro_tasks_v1';
 export const PomodoroView: React.FC<PomodoroViewProps> = ({
   settings,
   clockSettings,
+  timer,
   onUpdateSettings,
   onOpenSettings,
   onGoToClock,
@@ -91,11 +94,24 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   isDarkMode,
   onToggleDarkMode,
 }) => {
-  const [phase, setPhase] = useState<PomodoroPhase>('work');
-  const [timeLeft, setTimeLeft] = useState<number>(settings.workMinutes * 60);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [completedRounds, setCompletedRounds] = useState<number>(0);
-  const [currentRound, setCurrentRound] = useState<number>(1);
+  const {
+    phase,
+    timeLeft,
+    totalTime,
+    isRunning,
+    currentRound,
+    completedRounds,
+    consecutiveStreak,
+    activeTaskId,
+    togglePlayPause,
+    handleReset,
+    handleSkip,
+    handleAddMinute,
+    handleMinusMinute,
+    switchPhase,
+    setActiveTaskId,
+  } = timer;
+
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   // Active ambient theme definition for Pomodoro
@@ -157,10 +173,6 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     ];
   });
 
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(() => {
-    return tasks.find((t) => !t.isCompleted)?.id || null;
-  });
-
   const [newTaskTitle, setNewTaskTitle] = useState<string>('');
   const [newTaskDescription, setNewTaskDescription] = useState<string>('');
   const [newTaskEst, setNewTaskEst] = useState<number>(1);
@@ -172,7 +184,6 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   // Active Party state for header badge & live sync
   const [activeParty, setActiveParty] = useState<Party | null>(null);
   const activePartyId = getActivePartyId();
-  const secondsFocusedInMinuteRef = useRef<number>(0);
 
   useEffect(() => {
     if (!activePartyId) {
@@ -185,19 +196,15 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     return () => unsub();
   }, [activePartyId]);
 
-  // Sync Member Status (focusing, break, idle) to party leaderboards
+  // Set default active task if none selected yet
   useEffect(() => {
-    const partyIds = getSavedPartyIds();
-    if (partyIds.length === 0) return;
-
-    const status = !isRunning
-      ? 'idle'
-      : phase === 'work'
-      ? 'focusing'
-      : 'break';
-
-    updatePartyMemberStatus(partyIds, status);
-  }, [isRunning, phase]);
+    if (!activeTaskId && tasks.length > 0) {
+      const firstIncomplete = tasks.find((t) => !t.isCompleted);
+      if (firstIncomplete) {
+        setActiveTaskId(firstIncomplete.id);
+      }
+    }
+  }, [activeTaskId, tasks, setActiveTaskId]);
 
   // Smoothly keep display task for soft exit transitions
   useEffect(() => {
@@ -257,305 +264,17 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   const activeTasksList = tasks.filter((t) => !t.isCompleted);
   const completedTasksList = tasks.filter((t) => t.isCompleted);
 
-  // Keep total time for progress ring calculation
-  const getTotalTimeForPhase = useCallback(
-    (p: PomodoroPhase): number => {
-      switch (p) {
-        case 'work':
-          return settings.workMinutes * 60;
-        case 'shortBreak':
-          return settings.shortBreakMinutes * 60;
-        case 'longBreak':
-          return settings.longBreakMinutes * 60;
-      }
-    },
-    [settings]
-  );
-
-  const totalTime = getTotalTimeForPhase(phase);
-  const prevConfiguredDurationRef = useRef<number>(totalTime);
-
-  // Precision Wall-Clock Refs to prevent timer drift and background throttling lag
-  const endTimeRef = useRef<number | null>(null);
-  const timeLeftRef = useRef<number>(timeLeft);
-  const lastSecondTickRef = useRef<number>(timeLeft);
-
-  // Fresh references for interval & event handlers to avoid stale closures
-  const settingsRef = useRef<PomodoroSettings>(settings);
-  settingsRef.current = settings;
-  const phaseRef = useRef<PomodoroPhase>(phase);
-  phaseRef.current = phase;
-  const currentRoundRef = useRef<number>(currentRound);
-  currentRoundRef.current = currentRound;
-  const completedRoundsRef = useRef<number>(completedRounds);
-  completedRoundsRef.current = completedRounds;
-  const activeTaskIdRef = useRef<string | null>(activeTaskId);
-  activeTaskIdRef.current = activeTaskId;
-
-  // Switch phase
-  const switchPhase = useCallback(
-    (nextPhase: PomodoroPhase, autoStart: boolean = false) => {
-      setPhase(nextPhase);
-      phaseRef.current = nextPhase;
-      const nextDuration = getTotalTimeForPhase(nextPhase);
-      setTimeLeft(nextDuration);
-      timeLeftRef.current = nextDuration;
-      lastSecondTickRef.current = nextDuration;
-      prevConfiguredDurationRef.current = nextDuration;
-
-      if (autoStart) {
-        endTimeRef.current = Date.now() + nextDuration * 1000;
-        setIsRunning(true);
-        if (settingsRef.current.soundAlerts) {
-          playPomodoroStart();
-        }
-      } else {
-        endTimeRef.current = null;
-        setIsRunning(false);
-      }
-    },
-    [getTotalTimeForPhase]
-  );
-
-  // Play appropriate alert sound for the phase
-  const playAlertForPhase = useCallback(
-    (p: PomodoroPhase) => {
-      const currentSettings = settingsRef.current;
-      if (!currentSettings.soundAlerts) return;
-      if (p === 'work') {
-        triggerSoundAlert(currentSettings.workSound, currentSettings.customWorkSoundData);
-      } else if (p === 'shortBreak') {
-        triggerSoundAlert(currentSettings.shortBreakSound, currentSettings.customBreakSoundData);
-      } else {
-        triggerSoundAlert(currentSettings.longBreakSound, currentSettings.customLongBreakSoundData);
-      }
-    },
-    []
-  );
-
-  // Phase completion handler
-  const handlePhaseComplete = useCallback(() => {
-    const currentPhase = phaseRef.current;
-    playAlertForPhase(currentPhase);
-
-    if (currentPhase === 'work') {
-      const nextCompleted = completedRoundsRef.current + 1;
-      setCompletedRounds(nextCompleted);
-      completedRoundsRef.current = nextCompleted;
-
-      // Record completed session to local daily stats
-      recordFocusMinutes(0, true);
-
-      // Credit completed session to party leaderboard
-      const partyIds = getSavedPartyIds();
-      if (partyIds.length > 0) {
-        syncFocusTimeToParties(partyIds, 0, true, 'break');
-      }
-
-      // Increment active task completed pomodoros
-      if (activeTaskIdRef.current) {
-        const currentTaskId = activeTaskIdRef.current;
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === currentTaskId
-              ? { ...t, completedPomodoros: t.completedPomodoros + 1 }
-              : t
-          )
-        );
-      }
-
-      // Check for long break
-      if (currentRoundRef.current >= settingsRef.current.longBreakInterval) {
-        setCurrentRound(1);
-        currentRoundRef.current = 1;
-        const autoStartLong = settingsRef.current.autoStartLongBreaks ?? settingsRef.current.autoStartBreaks;
-        switchPhase('longBreak', !!autoStartLong);
-      } else {
-        const nextRound = currentRoundRef.current + 1;
-        setCurrentRound(nextRound);
-        currentRoundRef.current = nextRound;
-        switchPhase('shortBreak', !!settingsRef.current.autoStartBreaks);
-      }
-    } else {
-      // Break completed, back to work
-      switchPhase('work', !!settingsRef.current.autoStartPomodoros);
-    }
-  }, [playAlertForPhase, switchPhase]);
-
-  // High-Precision Real-Time Engine (Drift-Free & Background Resilient)
+  // Sync tasks state when pomodoro sessions complete
   useEffect(() => {
-    if (!isRunning) {
-      endTimeRef.current = null;
-      return;
+    try {
+      const saved = localStorage.getItem(TASKS_STORAGE_KEY);
+      if (saved) {
+        setTasks(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.debug('Failed to sync tasks from storage', e);
     }
-
-    // Ensure target end time is anchored to wall clock
-    if (!endTimeRef.current) {
-      endTimeRef.current = Date.now() + timeLeftRef.current * 1000;
-      lastSecondTickRef.current = timeLeftRef.current;
-    }
-
-    const checkTimerTick = () => {
-      if (!endTimeRef.current) return;
-      const now = Date.now();
-      const remainingMs = endTimeRef.current - now;
-      const calculatedSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-
-      if (calculatedSeconds !== timeLeftRef.current) {
-        const previousTime = timeLeftRef.current;
-        const secondsElapsed = Math.max(1, previousTime - calculatedSeconds);
-        timeLeftRef.current = calculatedSeconds;
-        setTimeLeft(calculatedSeconds);
-
-        // Sound tick on second change
-        if (calculatedSeconds < previousTime && settingsRef.current.tickSound && calculatedSeconds > 0) {
-          playTickSound();
-        }
-        lastSecondTickRef.current = calculatedSeconds;
-
-        // Focus progress sync for daily stats & study parties
-        if (phaseRef.current === 'work') {
-          secondsFocusedInMinuteRef.current += secondsElapsed;
-          if (secondsFocusedInMinuteRef.current >= 60) {
-            const minutesToCredit = Math.floor(secondsFocusedInMinuteRef.current / 60);
-            secondsFocusedInMinuteRef.current = secondsFocusedInMinuteRef.current % 60;
-            recordFocusMinutes(minutesToCredit, false);
-            const partyIds = getSavedPartyIds();
-            if (partyIds.length > 0) {
-              syncFocusTimeToParties(partyIds, minutesToCredit, false, 'focusing');
-            }
-          }
-        }
-
-        // Phase finished
-        if (calculatedSeconds <= 0) {
-          endTimeRef.current = null;
-          handlePhaseComplete();
-        }
-      }
-    };
-
-    // Fast check (200ms) guarantees sub-second optical precision and eliminates timer cancellation delays
-    const interval = window.setInterval(checkTimerTick, 200);
-
-    // Immediate check when returning to tab or window focus
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        checkTimerTick();
-      }
-    };
-    const handleFocus = () => {
-      checkTimerTick();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [isRunning, handlePhaseComplete]);
-
-  // Live Browser Tab Title Synchronization
-  useEffect(() => {
-    if (isRunning) {
-      const minStr = String(Math.floor(timeLeft / 60)).padStart(2, '0');
-      const secStr = String(timeLeft % 60).padStart(2, '0');
-      const phaseLabel = phase === 'work' ? 'Focus' : 'Break';
-      document.title = `(${minStr}:${secStr}) ${phaseLabel} | Desk Clock`;
-    } else {
-      document.title = 'Desk Clock & Pomodoro';
-    }
-    return () => {
-      document.title = 'Desk Clock & Pomodoro';
-    };
-  }, [isRunning, timeLeft, phase]);
-
-  // Play / Pause toggle
-  const togglePlayPause = useCallback(() => {
-    setIsRunning((prev) => {
-      const next = !prev;
-      if (next) {
-        endTimeRef.current = Date.now() + timeLeftRef.current * 1000;
-        lastSecondTickRef.current = timeLeftRef.current;
-        if (settingsRef.current.soundAlerts) {
-          playPomodoroStart();
-        }
-      } else {
-        endTimeRef.current = null;
-      }
-      return next;
-    });
-  }, []);
-
-  // Reset current phase timer
-  const handleReset = useCallback(() => {
-    setIsRunning(false);
-    endTimeRef.current = null;
-    const duration = getTotalTimeForPhase(phaseRef.current);
-    setTimeLeft(duration);
-    timeLeftRef.current = duration;
-    lastSecondTickRef.current = duration;
-  }, [getTotalTimeForPhase]);
-
-  // Skip to next phase
-  const handleSkip = useCallback(() => {
-    if (phaseRef.current === 'work') {
-      if (currentRoundRef.current >= settingsRef.current.longBreakInterval) {
-        setCurrentRound(1);
-        currentRoundRef.current = 1;
-        switchPhase('longBreak');
-      } else {
-        const nextRound = currentRoundRef.current + 1;
-        setCurrentRound(nextRound);
-        currentRoundRef.current = nextRound;
-        switchPhase('shortBreak');
-      }
-    } else {
-      switchPhase('work');
-    }
-  }, [switchPhase]);
-
-  // Quick adjust: add 1 minute
-  const handleAddMinute = useCallback(() => {
-    setTimeLeft((prev) => {
-      const next = prev + 60;
-      timeLeftRef.current = next;
-      lastSecondTickRef.current = next;
-      if (endTimeRef.current) {
-        endTimeRef.current += 60000;
-      }
-      return next;
-    });
-  }, []);
-
-  // Quick adjust: subtract 1 minute
-  const handleMinusMinute = useCallback(() => {
-    setTimeLeft((prev) => {
-      const next = Math.max(60, prev - 60);
-      timeLeftRef.current = next;
-      lastSecondTickRef.current = next;
-      if (endTimeRef.current) {
-        endTimeRef.current = Date.now() + next * 1000;
-      }
-      return next;
-    });
-  }, []);
-
-  // Only adjust timeLeft if interval duration in settings actually changes and timer is not running
-  useEffect(() => {
-    const configuredDuration = getTotalTimeForPhase(phase);
-    if (configuredDuration !== prevConfiguredDurationRef.current) {
-      prevConfiguredDurationRef.current = configuredDuration;
-      if (!isRunning) {
-        setTimeLeft(configuredDuration);
-        timeLeftRef.current = configuredDuration;
-        lastSecondTickRef.current = configuredDuration;
-      }
-    }
-  }, [settings.workMinutes, settings.shortBreakMinutes, settings.longBreakMinutes, phase, isRunning, getTotalTimeForPhase]);
+  }, [completedRounds]);
 
   // Spacebar shortcut to pause / play
   useEffect(() => {
@@ -866,6 +585,26 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Party Leaderboard & Chat Button */}
+          {onOpenParties && (
+            <button
+              id="pomo-party-btn"
+              onClick={() => onOpenParties('leaderboard')}
+              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer transition-colors ${
+                activeParty
+                  ? 'border-amber-400/40 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20'
+                  : resolvedTheme.isDark
+                  ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
+                  : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
+              }`}
+              title={activeParty ? `Party: ${activeParty.name} (Click to open Leaderboard & Chat)` : 'Study & Work Parties'}
+            >
+              <Users className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">{activeParty ? activeParty.name : 'Party'}</span>
+              <span className="text-[10px] font-mono opacity-70 hidden md:inline">• Leaderboard & Chat</span>
+            </button>
+          )}
+
           {/* Quick Desk Clock Switch */}
           <button
             id="pomo-to-clock-btn"
@@ -1212,17 +951,31 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                   </span>
                 </div>
 
-                <div
-                  className="flex items-center gap-1.5 mt-1.5 px-3 py-1 rounded-full border font-mono font-bold text-xs"
-                  style={{
-                    backgroundColor: `${currentTheme.accent}18`,
-                    borderColor: `${currentTheme.accent}35`,
-                    color: currentTheme.accent,
-                  }}
-                >
-                  <Flame className="w-3.5 h-3.5" />
-                  <span className="text-sm font-extrabold">{completedRounds}</span>
-                  <span className="text-[10px] uppercase font-medium text-neutral-400">Done</span>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap justify-center">
+                  <div
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full border font-mono font-bold text-xs shadow-sm transition-all"
+                    title={`${completedRounds} focus session${completedRounds === 1 ? '' : 's'} completed today (resets at 12:00 AM midnight)`}
+                    style={{
+                      backgroundColor: `${currentTheme.accent}18`,
+                      borderColor: `${currentTheme.accent}35`,
+                      color: currentTheme.accent,
+                    }}
+                  >
+                    <Flame className="w-3.5 h-3.5" />
+                    <span className="text-sm font-extrabold">{completedRounds}</span>
+                    <span className="text-[10px] uppercase font-medium opacity-80">Today</span>
+                  </div>
+
+                  {consecutiveStreak > 0 && (
+                    <div
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full border font-mono font-bold text-xs bg-amber-500/10 border-amber-500/30 text-amber-500 shadow-sm"
+                      title={`${consecutiveStreak} consecutive day focus streak! Resets at 12:00 AM midnight if a full day is missed.`}
+                    >
+                      <span className="text-xs">🔥</span>
+                      <span className="text-xs font-black">{consecutiveStreak}d</span>
+                      <span className="text-[10px] uppercase font-medium opacity-80">Streak</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Progress Dots */}

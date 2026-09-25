@@ -210,3 +210,13 @@ export interface Party {
   createdAt: string;
   memberCount: number;
 }
+
+export interface PartyMessage {
+  id: string;
+  partyId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatarColor?: string;
+  text: string;
+  createdAt: string;
+}

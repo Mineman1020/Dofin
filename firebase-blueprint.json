@@ -92,6 +92,43 @@
         }
       },
       "required": ["userId", "name", "totalFocusMinutes", "completedSessions", "currentStatus", "lastActiveAt", "joinedAt"]
+    },
+    "message": {
+      "title": "Party Chat Message",
+      "description": "A chat message sent within a study/work party room.",
+      "type": "object",
+      "properties": {
+        "partyId": {
+          "type": "string",
+          "description": "ID of the party room this message belongs to."
+        },
+        "senderId": {
+          "type": "string",
+          "description": "Unique participant identifier who sent the message."
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Display name of message sender.",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "senderAvatarColor": {
+          "type": "string",
+          "description": "Avatar theme color of the sender."
+        },
+        "text": {
+          "type": "string",
+          "description": "Message text content.",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the message was sent."
+        }
+      },
+      "required": ["partyId", "senderId", "senderName", "text", "createdAt"]
     }
   },
   "firestore": {
@@ -102,6 +139,10 @@
     "/parties/{partyId}/members/{memberId}": {
       "schema": "member",
       "description": "Subcollection storing members and live leaderboard stats for a party."
+    },
+    "/parties/{partyId}/messages/{messageId}": {
+      "schema": "message",
+      "description": "Subcollection storing real-time chat messages for a party."
     }
   }
 }

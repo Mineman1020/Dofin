@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
   Users,
@@ -20,8 +20,14 @@ import {
   RefreshCw,
   AlertCircle,
   ExternalLink,
+  MessageSquare,
+  Send,
+  Lock,
+  Unlock,
+  ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
-import { Party, PartyMember, PartyPurpose } from '../types';
+import { Party, PartyMember, PartyPurpose, PartyMessage } from '../types';
 import {
   getSavedPartyIds,
   getActivePartyId,
@@ -32,8 +38,11 @@ import {
   subscribeToParty,
   subscribeToLeaderboard,
   fetchUserParties,
+  sendPartyMessage,
+  subscribeToPartyMessages,
 } from '../utils/partyService';
-import { getOrCreateUserId } from '../utils/firebase';
+import { getOrCreateUserId, getOrCreateAvatarColor } from '../utils/firebase';
+import { PomodoroTimerController } from '../utils/usePomodoroTimer';
 
 interface PartyModalProps {
   isOpen: boolean;
@@ -42,6 +51,7 @@ interface PartyModalProps {
   initialTab?: PartyTab;
   onUpdateUserName?: (name: string) => void;
   onStartPomodoro?: () => void;
+  pomodoroTimer?: PomodoroTimerController;
 }
 
 type PartyTab = 'leaderboard' | 'my-parties' | 'create' | 'join';
@@ -65,14 +75,122 @@ export const PartyModal: React.FC<PartyModalProps> = ({
   initialTab,
   onUpdateUserName,
   onStartPomodoro,
+  pomodoroTimer,
 }) => {
   const currentUserId = getOrCreateUserId();
+
+  // Focus Session guard derived from Pomodoro controller
+  const isFocusRunning = Boolean(pomodoroTimer?.isFocusRunning);
+  const isInFocusSession = Boolean(pomodoroTimer?.isInFocusSession);
+  const focusSessionStartTime = pomodoroTimer?.focusSessionStartTime ?? null;
+  const pauseTimer = pomodoroTimer?.pauseTimer;
 
   const [activeTab, setActiveTab] = useState<PartyTab>('leaderboard');
   const [activeParty, setActiveParty] = useState<Party | null>(null);
   const [leaderboard, setLeaderboard] = useState<PartyMember[]>([]);
   const [userParties, setUserParties] = useState<Party[]>([]);
   const [isLoadingParties, setIsLoadingParties] = useState<boolean>(false);
+
+  // Sub-view in Active Party Window: 'leaderboard' or 'chat'
+  const [partyView, setPartyView] = useState<'leaderboard' | 'chat'>('leaderboard');
+  const [showFocusLockAlert, setShowFocusLockAlert] = useState<boolean>(false);
+
+  // Chat message feed & input state
+  const [allMessages, setAllMessages] = useState<PartyMessage[]>([]);
+  const [chatInput, setChatInput] = useState<string>('');
+  const [isSendingMessage, setIsSendingMessage] = useState<boolean>(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Subscribe to real-time party messages
+  useEffect(() => {
+    if (!activeParty?.id) {
+      setAllMessages([]);
+      return;
+    }
+    const unsub = subscribeToPartyMessages(activeParty.id, (msgs) => {
+      setAllMessages(msgs);
+    });
+    return () => unsub();
+  }, [activeParty?.id]);
+
+  // Condition 2: A user can receive messages ONLY when their focus session is over.
+  // NOTE: The user cannot receive messages even if he pauses the focus session!
+  const receivedMessages = useMemo(() => {
+    if (!isInFocusSession || !focusSessionStartTime) {
+      // Not in focus session (idle or on break or session over): all messages are received!
+      return allMessages;
+    }
+    // In focus session (running OR paused):
+    // Messages sent after focusSessionStartTime by others are NOT received yet!
+    return allMessages.filter((msg) => {
+      if (msg.senderId === currentUserId) return true; // User's own sent messages
+      const msgTime = new Date(msg.createdAt).getTime();
+      return msgTime < focusSessionStartTime;
+    });
+  }, [allMessages, isInFocusSession, focusSessionStartTime, currentUserId]);
+
+  // Quarantined messages waiting for the focus session to finish
+  const quarantinedMessages = useMemo(() => {
+    if (!isInFocusSession || !focusSessionStartTime) {
+      return [];
+    }
+    return allMessages.filter((msg) => {
+      if (msg.senderId === currentUserId) return false;
+      const msgTime = new Date(msg.createdAt).getTime();
+      return msgTime >= focusSessionStartTime;
+    });
+  }, [allMessages, isInFocusSession, focusSessionStartTime, currentUserId]);
+
+  // Track when focus session finishes so user gets an announcement when quarantined messages arrive
+  const [unlockedNotice, setUnlockedNotice] = useState<string | null>(null);
+  const prevInFocusSessionRef = useRef<boolean>(isInFocusSession);
+  const prevQuarantinedCountRef = useRef<number>(quarantinedMessages.length);
+
+  useEffect(() => {
+    if (prevInFocusSessionRef.current && !isInFocusSession) {
+      if (prevQuarantinedCountRef.current > 0) {
+        setUnlockedNotice(
+          `🎉 Focus session complete! ${prevQuarantinedCountRef.current} teammate message${
+            prevQuarantinedCountRef.current === 1 ? '' : 's'
+          } just arrived.`
+        );
+      }
+    }
+    prevInFocusSessionRef.current = isInFocusSession;
+    prevQuarantinedCountRef.current = quarantinedMessages.length;
+  }, [isInFocusSession, quarantinedMessages.length]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (partyView === 'chat') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [partyView, receivedMessages.length]);
+
+  // Send message handler
+  const handleSendMessage = async (customText?: string) => {
+    const textToSend = (customText || chatInput).trim();
+    if (!textToSend || !activeParty?.id || isSendingMessage) return;
+
+    if (isFocusRunning) {
+      setShowFocusLockAlert(true);
+      return;
+    }
+
+    setIsSendingMessage(true);
+    try {
+      const userMember = leaderboard.find((m) => m.userId === currentUserId);
+      const color = userMember?.avatarColor || getOrCreateAvatarColor();
+      await sendPartyMessage(activeParty.id, textToSend, userName || 'Focus Friend', color);
+      if (!customText) {
+        setChatInput('');
+      }
+    } catch (err) {
+      console.warn('Failed to send party message:', err);
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
 
   // Form states: Create
   const [createName, setCreateName] = useState('');
@@ -448,168 +566,436 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                 </div>
               </div>
 
-              {/* Leaderboard Table / Rankings */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-2">
-                    <Trophy className="w-4 h-4 text-amber-400" />
-                    <span>Focus Time Leaderboard</span>
-                  </label>
-                  <span className="text-[11px] text-neutral-400">
-                    Ranked by total Pomodoro minutes
-                  </span>
-                </div>
+              {/* Sub-view Switcher: Leaderboard vs Party Chat */}
+              <div className="flex items-center gap-2 p-1 bg-neutral-950/80 border border-neutral-800 rounded-xl">
+                <button
+                  id="party-view-leaderboard-btn"
+                  onClick={() => setPartyView('leaderboard')}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    partyView === 'leaderboard'
+                      ? 'bg-neutral-800 text-amber-300 shadow-sm'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Leaderboard ({leaderboard.length})</span>
+                </button>
 
-                {leaderboard.length === 0 ? (
-                  <div className="p-8 text-center rounded-2xl bg-neutral-950/40 border border-neutral-800 text-neutral-400">
-                    <RefreshCw className="w-6 h-6 mx-auto mb-2 animate-spin text-amber-400/60" />
-                    <p className="text-xs">Connecting to live party leaderboard...</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {leaderboard.map((member, index) => {
-                      const isCurrentUser = member.userId === currentUserId;
-                      const isFirst = index === 0;
-                      const isSecond = index === 1;
-                      const isThird = index === 2;
-
-                      // Format total time nicely
-                      const hrs = Math.floor(member.totalFocusMinutes / 60);
-                      const mins = member.totalFocusMinutes % 60;
-                      const formattedTime =
-                        hrs > 0
-                          ? `${hrs}h ${mins}m`
-                          : `${mins} mins`;
-
-                      const percent = Math.min(100, Math.round((member.totalFocusMinutes / maxMinutesInLeaderboard) * 100));
-
-                      return (
-                        <div
-                          key={member.id}
-                          className={`p-3.5 rounded-xl border transition-all relative overflow-hidden flex items-center justify-between gap-3 ${
-                            isCurrentUser
-                              ? 'bg-amber-400/10 border-amber-400/40 shadow-sm'
-                              : isFirst
-                              ? 'bg-neutral-950/90 border-amber-500/30'
-                              : 'bg-neutral-950/50 border-neutral-800'
-                          }`}
+                <button
+                  id="party-view-chat-btn"
+                  onClick={() => {
+                    if (isFocusRunning) {
+                      setShowFocusLockAlert(true);
+                    } else {
+                      setPartyView('chat');
+                    }
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    partyView === 'chat'
+                      ? 'bg-neutral-800 text-sky-300 shadow-sm'
+                      : isFocusRunning
+                      ? 'text-neutral-500 hover:text-neutral-300 bg-neutral-900/60'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                  title={
+                    isFocusRunning
+                      ? 'Chat is locked while focus session is running. Pause timer to open.'
+                      : 'Open live party chat'
+                  }
+                >
+                  {isFocusRunning ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                      <span>Chat (Locked in Focus)</span>
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Party Chat</span>
+                      {quarantinedMessages.length > 0 && (
+                        <span
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1"
+                          title={`${quarantinedMessages.length} message(s) waiting in quarantine until your focus session ends`}
                         >
-                          {/* Relative background progress bar */}
-                          <div
-                            className="absolute left-0 top-0 bottom-0 bg-amber-400/5 transition-all duration-500 pointer-events-none"
-                            style={{ width: `${percent}%` }}
-                          />
+                          <span>📦</span>
+                          <span>{quarantinedMessages.length} queued</span>
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
+              </div>
 
-                          {/* Left: Rank + Avatar + Name + Live Status */}
-                          <div className="flex items-center gap-3 relative z-10 min-w-0">
-                            {/* Rank Badge */}
-                            <div className="w-6 text-center font-mono font-bold text-sm">
-                              {isFirst ? (
-                                <Crown className="w-5 h-5 text-amber-400 mx-auto fill-amber-400/20" />
-                              ) : isSecond ? (
-                                <span className="text-neutral-300 font-bold">#2</span>
-                              ) : isThird ? (
-                                <span className="text-amber-600/90 font-bold">#3</span>
-                              ) : (
-                                <span className="text-neutral-400 text-xs">#{index + 1}</span>
-                              )}
-                            </div>
+              {/* SUB-VIEW 1: LEADERBOARD TABLE */}
+              {partyView === 'leaderboard' && (
+                <>
+                  {/* Leaderboard Table / Rankings */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-2">
+                        <Trophy className="w-4 h-4 text-amber-400" />
+                        <span>Focus Time Leaderboard</span>
+                      </label>
+                      <button
+                        onClick={() => {
+                          if (isFocusRunning) {
+                            setShowFocusLockAlert(true);
+                          } else {
+                            setPartyView('chat');
+                          }
+                        }}
+                        className="text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        <span>Open Chat</span>
+                      </button>
+                    </div>
 
-                            {/* Avatar */}
+                    {leaderboard.length === 0 ? (
+                      <div className="p-8 text-center rounded-2xl bg-neutral-950/40 border border-neutral-800 text-neutral-400">
+                        <RefreshCw className="w-6 h-6 mx-auto mb-2 animate-spin text-amber-400/60" />
+                        <p className="text-xs">Connecting to live party leaderboard...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {leaderboard.map((member, index) => {
+                          const isCurrentUser = member.userId === currentUserId;
+                          const isFirst = index === 0;
+                          const isSecond = index === 1;
+                          const isThird = index === 2;
+
+                          // Format total time nicely
+                          const hrs = Math.floor(member.totalFocusMinutes / 60);
+                          const mins = member.totalFocusMinutes % 60;
+                          const formattedTime =
+                            hrs > 0
+                              ? `${hrs}h ${mins}m`
+                              : `${mins} mins`;
+
+                          const percent = Math.min(100, Math.round((member.totalFocusMinutes / maxMinutesInLeaderboard) * 100));
+
+                          return (
                             <div
-                              className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-neutral-950 text-xs flex-shrink-0 shadow-inner"
-                              style={{ backgroundColor: member.avatarColor || '#f59e0b' }}
+                              key={member.id}
+                              className={`p-3.5 rounded-xl border transition-all relative overflow-hidden flex items-center justify-between gap-3 ${
+                                isCurrentUser
+                                  ? 'bg-amber-400/10 border-amber-400/40 shadow-sm'
+                                  : isFirst
+                                  ? 'bg-neutral-950/90 border-amber-500/30'
+                                  : 'bg-neutral-950/50 border-neutral-800'
+                              }`}
                             >
-                              {(member.name || 'F')[0].toUpperCase()}
-                            </div>
+                              {/* Relative background progress bar */}
+                              <div
+                                className="absolute left-0 top-0 bottom-0 bg-amber-400/5 transition-all duration-500 pointer-events-none"
+                                style={{ width: `${percent}%` }}
+                              />
 
-                            {/* Name & Status */}
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-sm font-semibold text-neutral-100 truncate">
-                                  {member.name}
-                                </span>
-                                {isCurrentUser && (
-                                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 flex-shrink-0">
-                                    You
+                              {/* Left: Rank + Avatar + Name + Live Status */}
+                              <div className="flex items-center gap-3 relative z-10 min-w-0">
+                                {/* Rank Badge */}
+                                <div className="w-6 text-center font-mono font-bold text-sm">
+                                  {isFirst ? (
+                                    <Crown className="w-5 h-5 text-amber-400 mx-auto fill-amber-400/20" />
+                                  ) : isSecond ? (
+                                    <span className="text-neutral-300 font-bold">#2</span>
+                                  ) : isThird ? (
+                                    <span className="text-amber-600/90 font-bold">#3</span>
+                                  ) : (
+                                    <span className="text-neutral-400 text-xs">#{index + 1}</span>
+                                  )}
+                                </div>
+
+                                {/* Avatar */}
+                                <div
+                                  className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-neutral-950 text-xs flex-shrink-0 shadow-inner"
+                                  style={{ backgroundColor: member.avatarColor || '#f59e0b' }}
+                                >
+                                  {(member.name || 'F')[0].toUpperCase()}
+                                </div>
+
+                                {/* Name & Status */}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-sm font-semibold text-neutral-100 truncate">
+                                      {member.name}
+                                    </span>
+                                    {isCurrentUser && (
+                                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 flex-shrink-0">
+                                        You
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Real-time status dot */}
+                                  <div className="flex items-center gap-1.5 text-[11px] text-neutral-400">
+                                    {member.currentStatus === 'focusing' ? (
+                                      <>
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                                        <span className="text-emerald-400 font-medium">In Focus Session</span>
+                                      </>
+                                    ) : member.currentStatus === 'break' ? (
+                                      <>
+                                        <span className="w-2 h-2 rounded-full bg-sky-400" />
+                                        <span className="text-sky-300">Taking a Break</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="w-2 h-2 rounded-full bg-neutral-600" />
+                                        <span className="text-neutral-400">Idle</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Right: Pomodoro count & Focus Time */}
+                              <div className="flex items-center gap-3 relative z-10 text-right flex-shrink-0">
+                                <div className="text-[11px] text-neutral-400 hidden sm:block">
+                                  <span className="font-mono text-neutral-300 font-semibold">
+                                    {member.completedSessions}
+                                  </span>{' '}
+                                  <span>sessions</span>
+                                </div>
+
+                                <div className="bg-neutral-900 border border-neutral-700/80 px-3 py-1.5 rounded-lg text-right min-w-[80px]">
+                                  <span className="text-xs font-mono font-bold text-amber-400 block">
+                                    {formattedTime}
                                   </span>
-                                )}
-                              </div>
-
-                              {/* Real-time status dot */}
-                              <div className="flex items-center gap-1.5 text-[11px] text-neutral-400">
-                                {member.currentStatus === 'focusing' ? (
-                                  <>
-                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                                    <span className="text-emerald-400 font-medium">In Focus Session</span>
-                                  </>
-                                ) : member.currentStatus === 'break' ? (
-                                  <>
-                                    <span className="w-2 h-2 rounded-full bg-sky-400" />
-                                    <span className="text-sky-300">Taking a Break</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="w-2 h-2 rounded-full bg-neutral-600" />
-                                    <span className="text-neutral-400">Idle</span>
-                                  </>
-                                )}
+                                  <span className="text-[9px] uppercase tracking-wider text-neutral-400 block font-mono">
+                                    Total Focus
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
-                          {/* Right: Pomodoro count & Focus Time */}
-                          <div className="flex items-center gap-3 relative z-10 text-right flex-shrink-0">
-                            <div className="text-[11px] text-neutral-400 hidden sm:block">
-                              <span className="font-mono text-neutral-300 font-semibold">
-                                {member.completedSessions}
-                              </span>{' '}
-                              <span>sessions</span>
-                            </div>
+                  {/* Action: Start Focusing */}
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Flame className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                      <div className="text-xs">
+                        <span className="font-semibold text-neutral-100 block">
+                          Want to climb the ranks?
+                        </span>
+                        <span className="text-neutral-400 block mt-0.5">
+                          Run your Pomodoro timer. Every minute you study automatically syncs to this party!
+                        </span>
+                      </div>
+                    </div>
 
-                            <div className="bg-neutral-900 border border-neutral-700/80 px-3 py-1.5 rounded-lg text-right min-w-[80px]">
-                              <span className="text-xs font-mono font-bold text-amber-400 block">
-                                {formattedTime}
-                              </span>
-                              <span className="text-[9px] uppercase tracking-wider text-neutral-400 block font-mono">
-                                Total Focus
+                    {onStartPomodoro && (
+                      <button
+                        onClick={() => {
+                          onClose();
+                          onStartPomodoro();
+                        }}
+                        className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-semibold tracking-wide transition-all shadow cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Open Pomodoro Timer</span>
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* SUB-VIEW 2: PARTY CHAT */}
+              {partyView === 'chat' && (
+                <div className="space-y-4 animate-fadeIn">
+                  {/* Condition 1 Focus Running Guard Overlay */}
+                  {isFocusRunning ? (
+                    <div className="p-8 text-center rounded-2xl bg-neutral-950/90 border border-amber-500/30 shadow-lg space-y-4">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+                        <Lock className="w-6 h-6 animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-white">Focus Session in Progress</h4>
+                        <p className="text-xs text-neutral-400 mt-1 max-w-sm mx-auto">
+                          Chat is locked to protect your deep concentration while the Pomodoro timer is running. You can pause the timer to access chat.
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-center gap-3 pt-2">
+                        <button
+                          onClick={() => pauseTimer?.()}
+                          className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
+                        >
+                          <span>⏸️ Pause Timer & Chat</span>
+                        </button>
+                        <button
+                          onClick={() => setPartyView('leaderboard')}
+                          className="px-4 py-2 rounded-xl border border-neutral-800 hover:bg-neutral-800 text-neutral-300 text-xs font-medium transition-colors cursor-pointer"
+                        >
+                          <span>View Leaderboard</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Chat Focus Protection Status Banner */}
+                      {isInFocusSession ? (
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
+                          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <div className="font-semibold flex items-center justify-between">
+                              <span>Focus Shield Active (Timer Paused)</span>
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                Quarantine Enforced
                               </span>
                             </div>
+                            <p className="text-[11px] text-neutral-300 mt-1">
+                              You can chat while paused. However, <strong>incoming messages from others are held in quarantine</strong> and will only be received when your focus session is completely over.
+                            </p>
+                            {quarantinedMessages.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-amber-500/20 flex items-center gap-1.5 font-mono text-[11px] text-amber-200 font-semibold">
+                                <span>📦</span>
+                                <span>{quarantinedMessages.length} teammate message{quarantinedMessages.length === 1 ? '' : 's'} waiting in quarantine</span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                      ) : (
+                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span className="text-neutral-200 text-[11px]">
+                              {receivedMessages.length > 0
+                                ? 'Focus session complete or idle. All party messages are received in real time.'
+                                : 'Live party chat active. Messages are delivered in real time.'}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            Live
+                          </span>
+                        </div>
+                      )}
 
-              {/* Action: Start Focusing */}
-              <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Flame className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                  <div className="text-xs">
-                    <span className="font-semibold text-neutral-100 block">
-                      Want to climb the ranks?
-                    </span>
-                    <span className="text-neutral-400 block mt-0.5">
-                      Run your Pomodoro timer. Every minute you study automatically syncs to this party!
-                    </span>
-                  </div>
+                      {/* Unlocked Quarantine Notification Banner */}
+                      {unlockedNotice && (
+                        <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-sky-500/20 border border-emerald-400/40 text-emerald-200 text-xs flex items-center justify-between gap-2 animate-fadeIn shadow-md">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 animate-spin" />
+                            <span className="font-medium text-[11px]">{unlockedNotice}</span>
+                          </div>
+                          <button
+                            onClick={() => setUnlockedNotice(null)}
+                            className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white cursor-pointer"
+                            aria-label="Dismiss notice"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Chat Messages Feed Container */}
+                      <div className="h-[280px] overflow-y-auto space-y-3 p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 shadow-inner">
+                        {receivedMessages.length === 0 ? (
+                          <div className="h-full flex flex-col items-center justify-center text-center p-4 text-neutral-500 space-y-2">
+                            <MessageSquare className="w-8 h-8 text-neutral-600 opacity-60" />
+                            <p className="text-xs text-neutral-400">No messages in this party yet.</p>
+                            <p className="text-[11px] text-neutral-500 max-w-xs">
+                              Say hi to your study partners or send a quick focus cheer below!
+                            </p>
+                          </div>
+                        ) : (
+                          receivedMessages.map((msg) => {
+                            const isMe = msg.senderId === currentUserId;
+                            const timeStr = new Date(msg.createdAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            });
+
+                            return (
+                              <div
+                                key={msg.id}
+                                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`}
+                              >
+                                <div className="flex items-center gap-1.5 text-[10px] text-neutral-400 px-1">
+                                  {!isMe && (
+                                    <span
+                                      className="w-2 h-2 rounded-full inline-block"
+                                      style={{ backgroundColor: msg.senderAvatarColor || '#38bdf8' }}
+                                    />
+                                  )}
+                                  <span className={isMe ? 'text-amber-400 font-semibold' : 'text-neutral-300 font-medium'}>
+                                    {isMe ? 'You' : msg.senderName}
+                                  </span>
+                                  <span>•</span>
+                                  <span>{timeStr}</span>
+                                </div>
+
+                                <div
+                                  className={`max-w-[85%] px-3.5 py-2 rounded-2xl text-xs break-words shadow-sm ${
+                                    isMe
+                                      ? 'bg-amber-400/20 border border-amber-400/40 text-neutral-100 rounded-tr-xs'
+                                      : 'bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-tl-xs'
+                                  }`}
+                                >
+                                  {msg.text}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        <div ref={messagesEndRef} />
+                      </div>
+
+                      {/* Quick Focus Reaction Cheers */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+                        <span className="text-[10px] uppercase font-mono text-neutral-500 shrink-0">Cheers:</span>
+                        {['🔥 Locked in!', '💪 Keep pushing!', '☕ Quick break', '🎯 Pomodoro done!', '👋 Hey team!'].map((cheer) => (
+                          <button
+                            key={cheer}
+                            type="button"
+                            onClick={() => handleSendMessage(cheer)}
+                            className="px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-700/80 text-neutral-300 text-[11px] whitespace-nowrap transition-colors cursor-pointer shrink-0"
+                          >
+                            {cheer}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Message Input Form */}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleSendMessage();
+                        }}
+                        className="flex items-center gap-2 pt-1"
+                      >
+                        <input
+                          type="text"
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          placeholder={
+                            isInFocusSession
+                              ? "Message party... (incoming messages reveal after session ends)"
+                              : "Message the party... (Enter to send)"
+                          }
+                          className="flex-1 px-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-100 text-xs placeholder:text-neutral-500 focus:outline-none focus:border-amber-400/60 transition-colors"
+                          disabled={isSendingMessage}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!chatInput.trim() || isSendingMessage}
+                          className={`px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            chatInput.trim() && !isSendingMessage
+                              ? 'bg-amber-400 hover:bg-amber-300 text-neutral-950 shadow-md'
+                              : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                          }`}
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Send</span>
+                        </button>
+                      </form>
+                    </>
+                  )}
                 </div>
-
-                {onStartPomodoro && (
-                  <button
-                    onClick={() => {
-                      onClose();
-                      onStartPomodoro();
-                    }}
-                    className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-semibold tracking-wide transition-all shadow cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Open Pomodoro Timer</span>
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           )}
 
@@ -917,6 +1303,51 @@ export const PartyModal: React.FC<PartyModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Focus Guard Dialog: Chat Locked during active focus */}
+      {showFocusLockAlert && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-neutral-900 border border-amber-500/40 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+              <Lock className="w-6 h-6 animate-pulse" />
+            </div>
+
+            <div>
+              <h3 className="text-base font-bold text-white tracking-tight">
+                Chat Locked During Focus
+              </h3>
+              <p className="text-xs text-neutral-300 mt-2 leading-relaxed">
+                To protect your deep work and concentration flow, chat is locked while your focus timer is actively running.
+              </p>
+              <p className="text-[11px] text-amber-400/90 font-medium mt-1">
+                You can pause your focus session anytime to open chat.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  pauseTimer?.();
+                  setPartyView('chat');
+                  setShowFocusLockAlert(false);
+                }}
+                className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs tracking-wide transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>⏸️ Pause Focus & Open Chat</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowFocusLockAlert(false)}
+                className="w-full py-2 rounded-xl border border-neutral-800 hover:bg-neutral-800 text-neutral-400 hover:text-white text-xs transition-colors cursor-pointer"
+              >
+                <span>Keep Focusing</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

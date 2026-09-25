@@ -44,6 +44,7 @@ import {
   recordTaskCompletion,
   resetStatsToDemo,
   DayStatsRecord,
+  getStreakTelemetry,
 } from '../utils/statsStorage';
 
 interface StatsViewProps {
@@ -85,6 +86,12 @@ export const StatsView: React.FC<StatsViewProps> = ({
     return getWeeklyStats(weekOffset);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset, refreshTrigger]);
+
+  // Compute live streak and today's telemetry
+  const streakInfo = useMemo(() => {
+    return getStreakTelemetry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTrigger]);
 
   // Fullscreen toggle handler
   const toggleFullscreen = async () => {
@@ -516,31 +523,30 @@ export const StatsView: React.FC<StatsViewProps> = ({
             </div>
           </div>
 
-          {/* Card 4: Peak Productive Day */}
+          {/* Card 4: Peak Productive Day & Streak */}
           <div className={`rounded-2xl p-2.5 sm:p-3 border flex flex-col justify-between ${cardBgClass}`}>
             <div className="flex items-center justify-between mb-1">
               <span className={`text-[10px] sm:text-xs font-semibold uppercase tracking-wider ${subtextClass}`}>
-                Peak Day
+                Peak Day & Streak
               </span>
               <div className="w-6 h-6 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-500 flex items-center justify-center shrink-0">
                 <Flame className="w-3 h-3" />
               </div>
             </div>
             <div>
-              <div className="text-sm sm:text-base font-extrabold tracking-tight truncate leading-tight">
-                {weeklyData.peakDay ? weeklyData.peakDay.dayName : 'Pending'}
+              <div className="flex items-baseline justify-between gap-1">
+                <div className="text-sm sm:text-base font-extrabold tracking-tight truncate leading-tight">
+                  {weeklyData.peakDay ? weeklyData.peakDay.dayName : 'Pending'}
+                </div>
+                {streakInfo.consecutiveDays > 0 && (
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                    🔥 {streakInfo.consecutiveDays}d streak
+                  </span>
+                )}
               </div>
               <p className={`text-[10px] sm:text-[11px] mt-0.5 flex items-center gap-1 ${subtextClass} truncate`}>
-                {weeklyData.peakDay ? (
-                  <>
-                    <span className="font-semibold text-rose-500">
-                      {formatMinutesHuman(weeklyData.peakDay.focusMinutes)}
-                    </span>
-                    <span>• {weeklyData.peakDay.tasksCompleted} tasks</span>
-                  </>
-                ) : (
-                  <span>Log focus to see peak</span>
-                )}
+                <span>Today: {streakInfo.todayCompletedRounds} rounds completed</span>
+                <span className="text-neutral-400">• resets 12:00 AM</span>
               </p>
             </div>
           </div>

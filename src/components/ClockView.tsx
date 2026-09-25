@@ -34,6 +34,7 @@ import { getWallpaperItem, saveWallpaperItem } from '../utils/wallpaperStorage';
 import { processImageFile, isSupportedImageFile } from '../utils/imageProcessor';
 import { generateSubjectMask } from '../utils/subjectSegmenter';
 import { AmbientBackground } from './AmbientBackground';
+import { PomodoroTimerController } from '../utils/usePomodoroTimer';
 
 interface ClockViewProps {
   settings: ClockSettings;
@@ -46,6 +47,7 @@ interface ClockViewProps {
   onOpenParties?: () => void;
   onOpenShortcuts?: () => void;
   userName: string;
+  pomodoroTimer?: PomodoroTimerController;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
 }
@@ -61,6 +63,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
   onOpenParties,
   onOpenShortcuts,
   userName,
+  pomodoroTimer,
   isDarkMode,
   onToggleDarkMode,
 }) => {
@@ -690,6 +693,23 @@ export const ClockView: React.FC<ClockViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Party Leaderboard & Chat Button */}
+          {onOpenParties && (
+            <button
+              id="clock-parties-btn"
+              onClick={onOpenParties}
+              className={`apple-hover flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md border cursor-pointer shadow-sm transition-colors ${
+                isLight && !hasCustomMediaWallpaper
+                  ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
+                  : 'border-white/10 bg-black/40 hover:bg-black/60 text-amber-300'
+              }`}
+              title="Study & Work Parties (Leaderboard & Chat)"
+            >
+              <Users className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Parties</span>
+            </button>
+          )}
+
           {/* Quick Pomodoro Switch */}
           <button
             id="clock-to-pomodoro-btn"
@@ -700,10 +720,20 @@ export const ClockView: React.FC<ClockViewProps> = ({
                 : 'border-white/10 bg-black/40 hover:bg-black/60'
             }`}
             style={{ color: resolvedAccentColor }}
-            title="Open Pomodoro Timer"
+            title={pomodoroTimer?.isRunning ? 'Pomodoro running in background - Click to view' : 'Open Pomodoro Timer'}
           >
-            <Timer className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Pomodoro</span>
+            <Timer className={`w-3.5 h-3.5 ${pomodoroTimer?.isRunning ? 'animate-pulse text-emerald-500' : ''}`} />
+            {pomodoroTimer && (pomodoroTimer.isRunning || pomodoroTimer.timeLeft < pomodoroTimer.totalTime) ? (
+              <span className="font-mono font-bold">
+                {String(Math.floor(pomodoroTimer.timeLeft / 60)).padStart(2, '0')}:
+                {String(pomodoroTimer.timeLeft % 60).padStart(2, '0')}
+                <span className="hidden sm:inline text-[10px] font-normal opacity-75 ml-1">
+                  ({pomodoroTimer.isRunning ? (pomodoroTimer.phase === 'work' ? 'Focus' : 'Break') : 'Paused'})
+                </span>
+              </span>
+            ) : (
+              <span className="hidden sm:inline">Pomodoro</span>
+            )}
           </button>
 
           {/* Fullscreen Button */}

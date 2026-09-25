@@ -7,13 +7,13 @@ import {
   deleteDoc,
   query,
   where,
+  orderBy,
   onSnapshot,
   increment,
   updateDoc,
-  serverTimestamp,
 } from 'firebase/firestore';
 import { db, getOrCreateUserId, getOrCreateAvatarColor } from './firebase';
-import { Party, PartyMember, PartyPurpose, MemberStatus } from '../types';
+import { Party, PartyMember, PartyPurpose, MemberStatus, PartyMessage } from '../types';
 
 const MY_PARTIES_KEY = 'desk_clock_saved_parties';
 const ACTIVE_PARTY_ID_KEY = 'desk_clock_active_party_id';
@@ -303,4 +303,66 @@ export async function fetchUserParties(savedIds: string[]): Promise<Party[]> {
     }
   }
   return results;
+}
+
+// Send a chat message in a party room
+export async function sendPartyMessage(
+  partyId: string,
+  text: string,
+  userName: string,
+  avatarColor?: string
+): Promise<PartyMessage> {
+  const cleanText = text.trim();
+  if (!cleanText) {
+    throw new Error('Message cannot be empty');
+  }
+  const userId = getOrCreateUserId();
+  const color = avatarColor || getOrCreateAvatarColor();
+  const messagesRef = collection(db, 'parties', partyId, 'messages');
+  const messageDoc = doc(messagesRef);
+
+  const messageData: PartyMessage = {
+    id: messageDoc.id,
+    partyId,
+    senderId: userId,
+    senderName: userName.trim() || 'Focus Friend',
+    ...(color ? { senderAvatarColor: color } : {}),
+    text: cleanText,
+    createdAt: new Date().toISOString(),
+  };
+
+  await setDoc(messageDoc, messageData);
+  return messageData;
+}
+
+// Subscribe to real-time chat messages for a party room
+export function subscribeToPartyMessages(
+  partyId: string,
+  onUpdate: (messages: PartyMessage[]) => void
+): () => void {
+  const messagesRef = collection(db, 'parties', partyId, 'messages');
+  const q = query(messagesRef, orderBy('createdAt', 'asc'));
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list: PartyMessage[] = [];
+      snap.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...(docSnap.data() as Omit<PartyMessage, 'id'>) });
+      });
+      onUpdate(list);
+    },
+    (err) => {
+      console.warn('Error subscribing to party messages with query, falling back:', err);
+      // Fallback in case of index delay
+      return onSnapshot(messagesRef, (fSnap) => {
+        const fallbackList: PartyMessage[] = [];
+        fSnap.forEach((docSnap) => {
+          fallbackList.push({ id: docSnap.id, ...(docSnap.data() as Omit<PartyMessage, 'id'>) });
+        });
+        fallbackList.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        onUpdate(fallbackList);
+      });
+    }
+  );
 }

@@ -262,3 +262,76 @@ export function formatMinutesHuman(totalMinutes: number): string {
   if (mins === 0) return `${hours}h`;
   return `${hours}h ${mins}m`;
 }
+
+// Get stats for today specifically
+export function getTodayStats(): { focusMinutes: number; completedSessions: number; tasksCompleted: number } {
+  try {
+    const stats = getStoredDailyStats();
+    const todayKey = formatDateKey(new Date());
+    return stats[todayKey] || { focusMinutes: 0, completedSessions: 0, tasksCompleted: 0 };
+  } catch (e) {
+    console.debug('Error getting today stats:', e);
+    return { focusMinutes: 0, completedSessions: 0, tasksCompleted: 0 };
+  }
+}
+
+// Get number of completed pomodoro sessions today (resets at 12:00 AM)
+export function getTodayCompletedRounds(): number {
+  return getTodayStats().completedSessions;
+}
+
+// Calculate consecutive active days streak ending today (or yesterday if today is still in progress)
+export function getConsecutiveDayStreak(): number {
+  try {
+    const stats = getStoredDailyStats();
+    const today = new Date();
+    const todayKey = formatDateKey(today);
+    const todayStats = stats[todayKey];
+    const hasTodayActivity = Boolean(
+      todayStats && ((todayStats.completedSessions || 0) > 0 || (todayStats.focusMinutes || 0) > 0)
+    );
+
+    let streak = hasTodayActivity ? 1 : 0;
+
+    // Check consecutive days backwards starting from yesterday
+    const checkDate = new Date(today);
+    checkDate.setDate(today.getDate() - 1);
+
+    for (let i = 0; i < 365; i++) {
+      const key = formatDateKey(checkDate);
+      const dayStats = stats[key];
+      const hadActivity = Boolean(
+        dayStats && ((dayStats.completedSessions || 0) > 0 || (dayStats.focusMinutes || 0) > 0)
+      );
+
+      if (hadActivity) {
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  } catch (e) {
+    console.debug('Error calculating consecutive streak:', e);
+    return 0;
+  }
+}
+
+// Full telemetry summary
+export function getStreakTelemetry(): {
+  consecutiveDays: number;
+  todayCompletedRounds: number;
+  todayFocusMinutes: number;
+  isStreakActive: boolean;
+} {
+  const today = getTodayStats();
+  const consecutiveDays = getConsecutiveDayStreak();
+  return {
+    consecutiveDays,
+    todayCompletedRounds: today.completedSessions,
+    todayFocusMinutes: today.focusMinutes,
+    isStreakActive: consecutiveDays > 0,
+  };
+}

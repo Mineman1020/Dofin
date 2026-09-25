@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { ClockSettings, PomodoroSettings, ViewMode } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS } from '../utils/constants';
+import { PomodoroTimerController } from '../utils/usePomodoroTimer';
 
 interface WelcomeScreenProps {
   userName: string;
@@ -31,6 +32,7 @@ interface WelcomeScreenProps {
   onOpenShortcuts?: () => void;
   clockSettings: ClockSettings;
   pomodoroSettings: PomodoroSettings;
+  pomodoroTimer?: PomodoroTimerController;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
 }
@@ -158,6 +160,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onOpenShortcuts,
   clockSettings,
   pomodoroSettings,
+  pomodoroTimer,
   isDarkMode,
   onToggleDarkMode,
 }) => {
@@ -471,43 +474,70 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </span>
               </div>
 
-              {/* Interval Rhythm Preview */}
-              <div
-                className={`py-3 px-4 rounded-2xl border mb-4 flex items-center justify-around text-xs font-mono transition-all duration-300 ease-out group-hover:scale-[1.018] group-hover:border-sky-500/40 group-hover:shadow-sm ${
-                  isDarkMode
-                    ? 'border-white/5 bg-[#0e1118]'
-                    : 'border-neutral-200/80 bg-neutral-50/90'
-                }`}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className="text-neutral-400">Focus</span>
-                  <span className="font-bold text-amber-500 dark:text-amber-400 text-sm">
-                    {pomodoroSettings.workMinutes}m
-                  </span>
+              {/* Active Continuous Pomodoro Session Banner or Interval Rhythm Preview */}
+              {pomodoroTimer && (pomodoroTimer.isRunning || pomodoroTimer.timeLeft < pomodoroTimer.totalTime) ? (
+                <div
+                  className={`py-3 px-4 rounded-2xl border mb-4 flex items-center justify-between text-xs font-mono transition-all duration-300 ease-out group-hover:scale-[1.018] group-hover:border-sky-500/40 group-hover:shadow-sm ${
+                    isDarkMode
+                      ? 'border-sky-500/30 bg-sky-950/20'
+                      : 'border-sky-200 bg-sky-50/90'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${pomodoroTimer.isRunning ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span className={`font-semibold ${pomodoroTimer.isRunning ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {pomodoroTimer.isRunning ? (pomodoroTimer.phase === 'work' ? 'Focusing' : 'Break') : 'Paused'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-sm text-sky-600 dark:text-sky-400">
+                      {String(Math.floor(pomodoroTimer.timeLeft / 60)).padStart(2, '0')}:
+                      {String(pomodoroTimer.timeLeft % 60).padStart(2, '0')}
+                    </span>
+                    <span className="text-[10px] text-neutral-400 font-mono">
+                      R{pomodoroTimer.currentRound}/{pomodoroSettings.longBreakInterval}
+                    </span>
+                  </div>
                 </div>
-                <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-800" />
-                <div className="flex items-center gap-1.5">
-                  <span className="text-neutral-400">Short</span>
-                  <span className="font-bold text-sky-500 dark:text-sky-400 text-sm">
-                    {pomodoroSettings.shortBreakMinutes}m
-                  </span>
+              ) : (
+                /* Interval Rhythm Preview */
+                <div
+                  className={`py-3 px-4 rounded-2xl border mb-4 flex items-center justify-around text-xs font-mono transition-all duration-300 ease-out group-hover:scale-[1.018] group-hover:border-sky-500/40 group-hover:shadow-sm ${
+                    isDarkMode
+                      ? 'border-white/5 bg-[#0e1118]'
+                      : 'border-neutral-200/80 bg-neutral-50/90'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-neutral-400">Focus</span>
+                    <span className="font-bold text-amber-500 dark:text-amber-400 text-sm">
+                      {pomodoroSettings.workMinutes}m
+                    </span>
+                  </div>
+                  <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-800" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-neutral-400">Short</span>
+                    <span className="font-bold text-sky-500 dark:text-sky-400 text-sm">
+                      {pomodoroSettings.shortBreakMinutes}m
+                    </span>
+                  </div>
+                  <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-800" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-neutral-400">Long</span>
+                    <span className="font-bold text-emerald-500 dark:text-emerald-400 text-sm">
+                      {pomodoroSettings.longBreakMinutes}m
+                    </span>
+                  </div>
                 </div>
-                <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-800" />
-                <div className="flex items-center gap-1.5">
-                  <span className="text-neutral-400">Long</span>
-                  <span className="font-bold text-emerald-500 dark:text-emerald-400 text-sm">
-                    {pomodoroSettings.longBreakMinutes}m
-                  </span>
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="pt-3 flex items-center justify-between border-t border-neutral-100 dark:border-white/5">
               <span className="text-xs text-neutral-500 font-mono">
-                Auto-Break Engine
+                {pomodoroTimer && pomodoroTimer.isRunning ? 'Timer Active' : 'Auto-Break Engine'}
               </span>
               <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-sky-600 dark:text-sky-400 group-hover:translate-x-2 transition-transform duration-300 ease-out">
-                <span>Start Focus</span>
+                <span>{pomodoroTimer && (pomodoroTimer.isRunning || pomodoroTimer.timeLeft < pomodoroTimer.totalTime) ? 'Continue Timer' : 'Start Focus'}</span>
                 <ArrowRight className="w-4 h-4 group-hover:scale-110 transition-transform duration-300 ease-out" />
               </div>
             </div>
@@ -604,7 +634,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                       Weekly Stats
                     </h3>
                     <span className="text-xs text-neutral-500 dark:text-neutral-400 block transition-colors duration-300 ease-out group-hover:text-neutral-600 dark:group-hover:text-neutral-300">
-                      Daily focus velocity & streak telemetry
+                      {pomodoroTimer && pomodoroTimer.consecutiveStreak > 0
+                        ? `Daily focus velocity • ${pomodoroTimer.consecutiveStreak} day streak`
+                        : 'Daily focus velocity & streak telemetry'}
                     </span>
                   </div>
                 </div>
@@ -621,7 +653,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                     : 'border-neutral-200/80 bg-neutral-50/90'
                 }`}
               >
-                <span className="text-xs text-neutral-400 font-mono">Velocity</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-neutral-400 font-mono">Velocity</span>
+                  {pomodoroTimer && pomodoroTimer.consecutiveStreak > 0 && (
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                      🔥{pomodoroTimer.consecutiveStreak}d
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-end gap-1.5 h-6 px-1">
                   {[
                     { day: 'M', h: '40%' },
