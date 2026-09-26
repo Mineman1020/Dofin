@@ -341,6 +341,7 @@ export const DEFAULT_CLOCK_SETTINGS: ClockSettings = {
   hourlyChime: true,
   brightness: 100,
   antiBurnIn: true,
+  enableScrolling: true,
   ambientTheme: 'none',
   ambientSoundEnabled: false,
   ambientSoundVolume: 35,
@@ -508,6 +509,7 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
   fontFamily: 'outfit',
   circleSize: 320,
   timerFontSize: 0,
+  verticalOffset: 0,
   themeId: 'classic-tomato',
   customBg: '',
   customTextColor: '',
@@ -520,6 +522,7 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
   ambientSoundEnabled: false,
   ambientSoundVolume: 35,
   ambientParticles: true,
+  ambientPhaseSync: true,
 };
 
 // Resolves actual effective Pomodoro styling, colors, and background

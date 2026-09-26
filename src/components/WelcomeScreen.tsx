@@ -5,6 +5,7 @@ import {
   Timer,
   Settings,
   Sun,
+  Sunrise,
   Moon,
   Sunset,
   ArrowRight,
@@ -171,17 +172,25 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Time of day greeting
+  // Time of day greeting with explicit hour thresholds:
+  // 05:00 - 11:59 -> Good morning
+  // 12:00 - 16:59 -> Good afternoon
+  // 17:00 - 21:59 -> Good evening
+  // 22:00 - 04:59 -> Good night
   const hours = currentTime.getHours();
-  let greeting = 'Good morning';
+  let greeting: string;
   let GreetingIcon = Sun;
   let greetingColor = 'text-amber-500';
 
-  if (hours >= 12 && hours < 17) {
+  if (hours >= 5 && hours < 12) {
+    greeting = 'Good morning';
+    GreetingIcon = hours < 8 ? Sunrise : Sun;
+    greetingColor = 'text-amber-500';
+  } else if (hours >= 12 && hours < 17) {
     greeting = 'Good afternoon';
     GreetingIcon = Sun;
     greetingColor = 'text-amber-500';
-  } else if (hours >= 17 && hours < 21) {
+  } else if (hours >= 17 && hours < 22) {
     greeting = 'Good evening';
     GreetingIcon = Sunset;
     greetingColor = 'text-rose-400';
@@ -228,10 +237,32 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     },
   };
 
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
+    return Boolean(typeof document !== 'undefined' && document.fullscreenElement);
+  });
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+    };
+  }, []);
+
+  const canScroll = !isFullscreen && clockSettings.enableScrolling !== false;
+
   return (
     <div
       id="welcome-screen-container"
-      className={`relative min-h-screen w-full flex flex-col justify-between overflow-x-hidden overflow-y-auto transition-colors duration-500 select-none ${
+      className={`relative w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-500 select-none ${
+        canScroll
+          ? 'min-h-screen overflow-y-auto pb-16'
+          : 'h-screen overflow-hidden pb-0'
+      } ${
         isDarkMode ? 'bg-[#07090e] text-neutral-100' : 'bg-[#f7f5f0] text-neutral-900'
       }`}
     >

@@ -522,24 +522,34 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     return { titleSize, descSize, badgeSize, gap, maxDescLines };
   }, [displayTask, circleDiameter]);
 
+  const canScroll = !isFullscreen && clockSettings?.enableScrolling !== false;
+
   return (
     <div
       id="pomodoro-view-container"
-      className={`relative w-full h-screen min-h-screen flex flex-col justify-between select-none overflow-x-hidden overflow-y-auto sm:overflow-hidden transition-colors duration-500 ${
+      className={`relative w-full flex flex-col justify-between select-none overflow-x-hidden transition-colors duration-500 ${
+        canScroll
+          ? 'min-h-screen overflow-y-auto pb-16'
+          : 'h-screen overflow-hidden pb-0'
+      } ${
         isIdle ? 'cursor-none' : ''
       }`}
       style={{
         backgroundColor: isAmbientActive ? 'transparent' : resolvedTheme.bg,
-        background: isAmbientActive ? activeAmbient.bgGradient : undefined,
+        backgroundImage: isAmbientActive ? activeAmbient.bgGradient : undefined,
         color: resolvedTheme.textColor,
       }}
     >
       {/* 0. Dynamic Ambient Atmospheric Canvas (Beachside Sunset, Rainy Day, Aurora, etc.) */}
       {isAmbientActive && (
-        <AmbientBackground
-          ambientTheme={effectiveAmbientId}
-          particles={settings.ambientParticles !== false}
-        />
+        <div className="fixed inset-0 pointer-events-none z-0">
+          <AmbientBackground
+            ambientTheme={effectiveAmbientId}
+            particles={settings.ambientParticles !== false}
+            pomodoroPhase={phase}
+            syncPhase={settings.ambientPhaseSync !== false}
+          />
+        </div>
       )}
 
       {/* Ambient lighting backdrop (Hidden when idle or when ambient theme is active) */}
@@ -555,7 +565,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       {/* Top Header Bar (Disappears when left idle) */}
       <header
         id="pomodoro-header"
-        className={`absolute top-0 left-0 right-0 px-6 py-4 flex items-center justify-between z-20 border-b backdrop-blur-md transition-all duration-700 ease-in-out ${
+        className={`sticky top-0 left-0 right-0 px-6 py-4 flex items-center justify-between z-20 border-b backdrop-blur-md transition-all duration-700 ease-in-out ${
           isIdle
             ? 'opacity-0 -translate-y-full pointer-events-none'
             : 'opacity-100 translate-y-0 pointer-events-auto'
@@ -667,17 +677,17 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
 
       {/* Main Pomodoro & Controls Container */}
       <main
-        className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col items-center justify-center z-10 transition-all duration-700 ${
-          isIdle ? 'py-4' : 'pt-20 pb-6'
+        className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col items-center justify-center z-10 transition-all duration-500 ${
+          isIdle ? 'py-4' : 'py-6'
         }`}
       >
         {/* Phase Pill Selector */}
         <div
           id="pomodoro-phase-pills"
-          className={`flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-inner transition-all duration-700 ease-in-out ${
+          className={`flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-inner transition-all duration-700 ease-in-out shrink-0 ${
             isIdle
               ? 'opacity-0 -translate-y-4 pointer-events-none max-h-0 mb-0 py-0 border-transparent overflow-hidden'
-              : 'opacity-100 translate-y-0 pointer-events-auto max-h-16 mb-6'
+              : 'opacity-100 translate-y-0 pointer-events-auto max-h-16 mb-5'
           }`}
           style={{
             backgroundColor: resolvedTheme.cardBg,
@@ -735,21 +745,25 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
 
         {/* Central Display: Circle on Left/Center, and Vertical Controls + Tasks on the Right */}
         <div className="flex flex-col lg:flex-row items-center justify-center gap-6 sm:gap-8 lg:gap-10 my-auto w-full transition-all duration-700">
-          {/* 1. Timer Circle (Scalable up to larger sizes, moved a little to the left for optical balance when enlarged) */}
+          {/* 1. Timer Circle (Centrally aligned with square aspect ratio) */}
           <div
             id="pomodoro-timer-circle"
-            className="relative flex items-center justify-center transition-all duration-500 shrink-0 max-w-[96vw] max-h-[82vh]"
+            className="relative flex items-center justify-center transition-all duration-300 shrink-0 aspect-square"
             style={{
               width: circleDiameter,
               height: circleDiameter,
-              transform: timerLeftShift > 0 ? `translateX(-${timerLeftShift}px)` : 'none',
+              maxWidth: 'min(94vw, calc(100vh - 140px))',
+              maxHeight: 'min(94vw, calc(100vh - 140px))',
+              aspectRatio: '1 / 1',
+              transform: timerLeftShift > 0 ? `translateX(-${timerLeftShift}px)` : undefined,
             }}
           >
             <svg
-              width={circleDiameter}
-              height={circleDiameter}
+              width="100%"
+              height="100%"
               viewBox={`0 0 ${circleDiameter} ${circleDiameter}`}
-              className="transform -rotate-90 transition-all duration-300 w-full h-full"
+              preserveAspectRatio="xMidYMid meet"
+              className="transform -rotate-90 transition-all duration-300 w-full h-full aspect-square"
             >
               {/* Background Circle */}
               <circle

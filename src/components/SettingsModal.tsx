@@ -80,6 +80,7 @@ interface SettingsModalProps {
   onReplayIntro?: () => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  initialTab?: TabKey;
 }
 
 type TabKey = 'clock' | 'pomodoro' | 'general';
@@ -97,8 +98,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onReplayIntro,
   isDarkMode,
   onToggleDarkMode,
+  initialTab,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabKey>('clock');
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab || 'clock');
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
   const [activeSoundPreviewPhase, setActiveSoundPreviewPhase] = useState<string | null>(null);
   const [previewPomoPhase, setPreviewPomoPhase] = useState<'work' | 'shortBreak' | 'longBreak'>('work');
 
@@ -652,7 +660,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className="w-full rounded-2xl p-4 transition-all duration-300 border border-neutral-700/80 shadow-inner flex flex-col items-center justify-center text-center overflow-hidden min-h-[110px] relative"
             style={{
               backgroundColor: activeTab === 'pomodoro' ? resolvedPomoTheme.bg : isAmbientActive ? undefined : activeBg,
-              background:
+              backgroundImage:
                 activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme')
                   ? activeAmbientTheme.bgGradient
                   : undefined,
@@ -685,6 +693,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <AmbientBackground
                 ambientTheme={clockSettings.ambientTheme}
                 particles={clockSettings.ambientParticles !== false}
+                className="rounded-2xl"
+              />
+            )}
+            {activeTab === 'pomodoro' && isPomoAmbientActive && (
+              <AmbientBackground
+                ambientTheme={pomodoroSettings.ambientTheme}
+                particles={pomodoroSettings.ambientParticles !== false}
+                pomodoroPhase={previewPomoPhase}
+                syncPhase={pomodoroSettings.ambientPhaseSync !== false}
                 className="rounded-2xl"
               />
             )}
@@ -963,7 +980,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex items-center justify-between w-full mb-2">
                           <div
                             className="w-7 h-7 rounded-lg border border-neutral-700 relative overflow-hidden shadow-inner flex-shrink-0"
-                            style={{ background: ambient.bgGradient }}
+                            style={{ backgroundImage: ambient.bgGradient }}
                           >
                             <span
                               className="absolute inset-0 m-auto w-2 h-2 rounded-full"
@@ -2110,7 +2127,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex items-center justify-between w-full mb-2">
                           <div
                             className="w-7 h-7 rounded-lg border border-neutral-700 relative overflow-hidden shadow-inner flex-shrink-0"
-                            style={{ background: ambient.bgGradient }}
+                            style={{ backgroundImage: ambient.bgGradient }}
                           >
                             <span
                               className="absolute inset-0 m-auto w-2 h-2 rounded-full"
@@ -2217,6 +2234,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         checked={pomodoroSettings.ambientParticles !== false}
                         onChange={(e) =>
                           onUpdatePomodoroSettings({ ambientParticles: e.target.checked })
+                        }
+                        className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700 cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Ambient Phase Color Synchronization Toggle */}
+                    <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between sm:col-span-2">
+                      <div className="pr-4">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <span className="text-xs font-semibold text-neutral-200 block">
+                            Synchronize Ambient Atmosphere with Timer Phase
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-neutral-400 block mt-0.5">
+                          Subtly tints ambient atmosphere lighting (e.g. rain, beach sunset, starlight) from focused work tones to calming cool teal during breaks
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        id="pomo-ambient-phase-sync-toggle"
+                        checked={pomodoroSettings.ambientPhaseSync !== false}
+                        onChange={(e) =>
+                          onUpdatePomodoroSettings({ ambientPhaseSync: e.target.checked })
                         }
                         className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700 cursor-pointer"
                       />
@@ -3201,8 +3242,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Shield className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Display Care</span>
+                  <span>Display & Layout</span>
                 </label>
+
+                {/* Vertical Page Scrolling Option */}
+                <label
+                  id="toggle-scrolling-label"
+                  className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                >
+                  <div>
+                    <span className="text-xs font-medium text-neutral-200 block">
+                      Vertical Page Scrolling
+                    </span>
+                    <span className="text-[11px] text-neutral-500">
+                      Enables scrolling so all controls and views are fully visible in compact windows or before fullscreen
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="toggle-scrolling"
+                    checked={clockSettings.enableScrolling !== false}
+                    onChange={(e) => onUpdateClockSettings({ enableScrolling: e.target.checked })}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                  />
+                </label>
+
                 <label
                   id="toggle-antiburnin-label"
                   className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"

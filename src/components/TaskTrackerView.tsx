@@ -199,10 +199,16 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
     day: 'numeric',
   });
 
+  const canScroll = !isFullscreen && clockSettings?.enableScrolling !== false;
+
   return (
     <div
       id="task-tracker-view"
-      className={`relative min-h-screen w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-500 ${
+      className={`relative w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-500 ${
+        canScroll
+          ? 'min-h-screen overflow-y-auto pb-16'
+          : 'h-screen overflow-hidden pb-0'
+      } ${
         isDarkMode ? 'bg-neutral-950 text-neutral-100' : 'bg-[#f7f5f0] text-neutral-900'
       }`}
     >

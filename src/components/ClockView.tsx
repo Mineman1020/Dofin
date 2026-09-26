@@ -538,17 +538,23 @@ export const ClockView: React.FC<ClockViewProps> = ({
     }
   };
 
+  const canScroll = !isFullscreen && settings.enableScrolling !== false;
+
   return (
     <div
       id="clock-view-container"
-      className="relative w-full h-screen min-h-screen flex flex-col justify-center items-center select-none overflow-hidden transition-colors duration-700 bg-black"
+      className={`relative w-full flex flex-col items-center select-none transition-colors duration-700 bg-black ${
+        canScroll
+          ? 'min-h-screen justify-between overflow-y-auto overflow-x-hidden pb-16'
+          : 'h-screen justify-center overflow-hidden pb-0'
+      }`}
       style={{
         backgroundColor: hasCustomMediaWallpaper
           ? '#000000'
-          : isAmbientActive
-          ? undefined
-          : (resolvedBg || (isLight ? '#f7f5f0' : '#000000')),
-        background: !hasCustomMediaWallpaper && isAmbientActive ? resolvedBg : undefined,
+          : !isAmbientActive
+          ? (resolvedBg || (isLight ? '#f7f5f0' : '#000000'))
+          : undefined,
+        backgroundImage: !hasCustomMediaWallpaper && isAmbientActive ? resolvedBg : undefined,
         color: resolvedTextColor,
         filter: `brightness(${settings.brightness}%)`,
       }}
@@ -568,7 +574,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
       {isDraggingOverClock && (
         <div
           id="clock-drop-overlay"
-          className="absolute inset-0 z-50 bg-black/75 backdrop-blur-sm border-4 border-dashed border-sky-400 flex flex-col items-center justify-center pointer-events-none transition-all duration-200"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm border-4 border-dashed border-sky-400 flex flex-col items-center justify-center pointer-events-none transition-all duration-200"
         >
           <div className="p-4 rounded-2xl bg-neutral-900/90 border border-sky-500/40 text-center shadow-2xl flex flex-col items-center gap-2 max-w-sm">
             <ImageIcon className="w-10 h-10 text-sky-400 animate-bounce" />
@@ -599,7 +605,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
           loop
           muted
           playsInline
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0 transition-opacity duration-700"
+          className="fixed inset-0 w-full h-full object-cover pointer-events-none z-0 transition-opacity duration-700"
           style={{
             filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
             willChange: 'transform',
@@ -615,7 +621,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
           alt="Wallpaper slideshow background"
           crossOrigin="anonymous"
           decoding="async"
-          className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none z-0 transition-all duration-1000 ease-in-out"
+          className="fixed inset-0 w-full h-full object-cover object-center pointer-events-none z-0 transition-all duration-1000 ease-in-out"
           style={{
             filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
           }}
@@ -629,7 +635,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
           alt="Wallpaper background"
           crossOrigin="anonymous"
           decoding="async"
-          className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none z-0 transition-opacity duration-700"
+          className="fixed inset-0 w-full h-full object-cover object-center pointer-events-none z-0 transition-opacity duration-700"
           style={{
             filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
           }}
@@ -638,16 +644,18 @@ export const ClockView: React.FC<ClockViewProps> = ({
 
       {/* Procedural Ambient Background (When in Theme mode) */}
       {isAmbientActive && !hasCustomMediaWallpaper && (
-        <AmbientBackground
-          ambientTheme={settings.ambientTheme}
-          particles={settings.ambientParticles !== false}
-        />
+        <div className="fixed inset-0 pointer-events-none z-0">
+          <AmbientBackground
+            ambientTheme={settings.ambientTheme}
+            particles={settings.ambientParticles !== false}
+          />
+        </div>
       )}
 
       {/* 2. WALLPAPER DIMMER / READABILITY OVERLAY */}
       {hasCustomMediaWallpaper && (
         <div
-          className="absolute inset-0 pointer-events-none z-[1] transition-opacity duration-500 bg-black"
+          className="fixed inset-0 pointer-events-none z-[1] transition-opacity duration-500 bg-black"
           style={{
             opacity: (settings.wallpaperOpacity ?? 25) / 100,
           }}
@@ -657,7 +665,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
       {/* 3. OPTICAL DEPTH EFFECT AMBIENT VIGNETTE */}
       {depthEffect && (
         <div
-          className="absolute inset-0 pointer-events-none z-[2] transition-opacity duration-700"
+          className="fixed inset-0 pointer-events-none z-[2] transition-opacity duration-700"
           style={{
             background: `radial-gradient(circle at 50% 50%, rgba(0,0,0,0.1) 0%, rgba(0,0,0,${(depthIntensity / 100) * 0.75}) 100%)`,
           }}
@@ -667,7 +675,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
       {/* Top Floating Control Bar */}
       <header
         id="clock-header-controls"
-        className={`absolute top-0 left-0 right-0 w-full px-6 py-5 flex items-center justify-between z-40 transition-all duration-300 ${
+        className={`sticky top-0 left-0 right-0 w-full px-6 py-5 flex items-center justify-between z-40 transition-all duration-300 ${
           controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
         }`}
       >
@@ -921,7 +929,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
         <img
           src={depthMaskUrl}
           alt="Foreground Depth Cutout"
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-20 transition-opacity duration-700"
+          className="fixed inset-0 w-full h-full object-cover pointer-events-none z-20 transition-opacity duration-700"
           style={{
             filter: settings.wallpaperBlur ? `blur(${settings.wallpaperBlur}px)` : undefined,
           }}

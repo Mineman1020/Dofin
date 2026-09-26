@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Maximize2, Minimize2, Sparkles } from 'lucide-react';
 import { ViewMode, ClockSettings, PomodoroSettings } from './types';
 import {
   DEFAULT_CLOCK_SETTINGS,
@@ -63,6 +64,20 @@ export default function App() {
 
   // Settings modal visibility
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [settingsModalTab, setSettingsModalTab] = useState<
+    'clock' | 'pomodoro' | 'general'
+  >('clock');
+
+  const handleOpenSettings = (tab?: 'clock' | 'pomodoro' | 'general') => {
+    if (tab) {
+      setSettingsModalTab(tab);
+    } else if (currentView === 'pomodoro') {
+      setSettingsModalTab('pomodoro');
+    } else {
+      setSettingsModalTab('clock');
+    }
+    setIsSettingsOpen(true);
+  };
 
   // Study & Work Party Modal visibility and tab
   const [isPartyModalOpen, setIsPartyModalOpen] = useState<boolean>(false);
@@ -108,6 +123,60 @@ export default function App() {
 
   // Continuous Pomodoro Engine (resilient to view switching and midnight rollover)
   const pomodoroTimer = usePomodoroTimer(pomodoroSettings);
+
+  // Fullscreen State & Controller
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
+    return Boolean(typeof document !== 'undefined' && document.fullscreenElement);
+  });
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+    };
+  }, []);
+
+  const handleToggleFullscreen = () => {
+    try {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+      }
+    } catch (e) {
+      console.debug('Fullscreen error:', e);
+    }
+  };
+
+  // User activity tracker for smooth auto-fading in ambient views
+  const [isAppIdle, setIsAppIdle] = useState<boolean>(false);
+  useEffect(() => {
+    let timer: number;
+    const handleActivity = () => {
+      setIsAppIdle(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        setIsAppIdle(true);
+      }, 5000);
+    };
+
+    window.addEventListener('mousemove', handleActivity, { passive: true });
+    window.addEventListener('keydown', handleActivity, { passive: true });
+    window.addEventListener('touchstart', handleActivity, { passive: true });
+    timer = window.setTimeout(() => setIsAppIdle(true), 5000);
+
+    return () => {
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   // Toggle Dark Mode
   const handleToggleDarkMode = () => {
@@ -216,7 +285,11 @@ export default function App() {
 
       // 3. Settings modal toggle
       if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
-        setIsSettingsOpen((prev) => !prev);
+        if (!isSettingsOpen) {
+          handleOpenSettings(currentView === 'pomodoro' ? 'pomodoro' : 'clock');
+        } else {
+          setIsSettingsOpen(false);
+        }
         return;
       }
 
@@ -232,13 +305,19 @@ export default function App() {
         return;
       }
 
-      // 6. Intro Reveal replay
+      // 6. Fullscreen toggle
+      if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        handleToggleFullscreen();
+        return;
+      }
+
+      // 7. Intro Reveal replay
       if (e.key.toLowerCase() === 'i' && !e.ctrlKey && !e.metaKey && currentView === 'welcome') {
         setShowStartupReveal(true);
         return;
       }
 
-      // 7. Direct view navigation hotkeys
+      // 8. Direct view navigation hotkeys
       if (!isSettingsOpen && !isPartyModalOpen && !isNameModalOpen) {
         if (currentView === 'welcome') {
           if (e.key === '1' || e.key.toLowerCase() === 'c') setCurrentView('clock');
@@ -265,10 +344,14 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isShortcutsOpen, isPartyModalOpen, isSettingsOpen, isNameModalOpen, userName, currentView]);
 
+  const canScroll = !isFullscreen && clockSettings.enableScrolling !== false;
+
   return (
     <div
       id="desk-station-app"
-      className={`relative w-full h-full min-h-screen select-none overflow-hidden transition-colors duration-500 ${
+      className={`relative w-full select-none overflow-x-hidden ${
+        canScroll ? 'min-h-screen overflow-y-auto' : 'h-screen overflow-hidden'
+      } transition-colors duration-500 ${
         isDarkMode ? 'dark bg-neutral-950 text-neutral-100' : 'bg-[#f7f5f0] text-neutral-900'
       }`}
     >
@@ -279,14 +362,14 @@ export default function App() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 1.008, y: -6 }}
           transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-          className="w-full h-full min-h-screen"
+          className={`w-full ${canScroll ? 'min-h-screen flex flex-col' : 'h-full flex flex-col overflow-hidden'}`}
         >
           {/* 1. Welcome Screen */}
           {currentView === 'welcome' && (
             <WelcomeScreen
               userName={userName || 'Friend'}
               onSelectMode={(mode) => setCurrentView(mode)}
-              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenSettings={() => handleOpenSettings()}
               onOpenParties={handleOpenParties}
               onOpenNameModal={() => setIsNameModalOpen(true)}
               onOpenShortcuts={() => setIsShortcutsOpen(true)}
@@ -303,7 +386,7 @@ export default function App() {
             <ClockView
               settings={clockSettings}
               onUpdateSettings={handleUpdateClockSettings}
-              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenSettings={() => handleOpenSettings('clock')}
               onOpenParties={() => handleOpenParties('my-parties')}
               onOpenShortcuts={() => setIsShortcutsOpen(true)}
               onGoToWelcome={() => setCurrentView('welcome')}
@@ -324,7 +407,7 @@ export default function App() {
               clockSettings={clockSettings}
               timer={pomodoroTimer}
               onUpdateSettings={handleUpdatePomodoroSettings}
-              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenSettings={() => handleOpenSettings('pomodoro')}
               onOpenParties={handleOpenParties}
               onOpenShortcuts={() => setIsShortcutsOpen(true)}
               onGoToClock={() => setCurrentView('clock')}
@@ -346,7 +429,7 @@ export default function App() {
               onGoToClock={() => setCurrentView('clock')}
               onGoToPomodoro={() => setCurrentView('pomodoro')}
               onGoToStats={() => setCurrentView('stats')}
-              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenSettings={() => handleOpenSettings()}
               onOpenParties={handleOpenParties}
               onOpenShortcuts={() => setIsShortcutsOpen(true)}
               userName={userName || 'Friend'}
@@ -364,7 +447,7 @@ export default function App() {
               onGoToClock={() => setCurrentView('clock')}
               onGoToPomodoro={() => setCurrentView('pomodoro')}
               onGoToTasks={() => setCurrentView('tasks')}
-              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenSettings={() => handleOpenSettings()}
               onOpenParties={handleOpenParties}
               onOpenShortcuts={() => setIsShortcutsOpen(true)}
               userName={userName || 'Friend'}
@@ -379,6 +462,7 @@ export default function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        initialTab={settingsModalTab}
         clockSettings={clockSettings}
         onUpdateClockSettings={handleUpdateClockSettings}
         pomodoroSettings={pomodoroSettings}
@@ -433,6 +517,41 @@ export default function App() {
         isDarkMode={isDarkMode}
         onSelectMode={(mode) => setCurrentView(mode)}
       />
+
+      {/* Floating Bottom Tip Bar: Fullscreen Recommendation & Quick Toggle (Only shown when not in full screen) */}
+      {!isFullscreen && (
+        <div
+          id="app-fullscreen-tip-bar"
+          className={`fixed bottom-3 left-1/2 -translate-x-1/2 z-40 max-w-[94vw] sm:max-w-none px-3.5 sm:px-4 py-1.5 rounded-full text-xs font-medium backdrop-blur-md border shadow-lg flex items-center gap-2.5 select-none transition-all duration-300 pointer-events-auto ${
+            (currentView === 'clock' || currentView === 'pomodoro') && isAppIdle
+              ? 'opacity-0 pointer-events-none translate-y-2'
+              : 'opacity-100 translate-y-0'
+          } ${
+            isDarkMode
+              ? 'bg-neutral-900/90 border-neutral-700/80 text-neutral-300'
+              : 'bg-white/95 border-neutral-300 text-neutral-700 shadow-neutral-900/10'
+          }`}
+        >
+          <span className="flex items-center gap-1.5 truncate">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span className="truncate">Tip: Use the app in full screen for the best experience</span>
+          </span>
+          <button
+            id="global-fullscreen-tip-btn"
+            onClick={handleToggleFullscreen}
+            className={`apple-hover flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold border cursor-pointer transition-colors shrink-0 ${
+              isDarkMode
+                ? 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+                : 'border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100'
+            }`}
+            title="Enter Full Screen (Press F)"
+          >
+            <Maximize2 className="w-3 h-3" />
+            <span>Full Screen</span>
+            <kbd className="text-[9px] font-mono px-1 py-0.2 rounded border border-current opacity-70 ml-0.5">F</kbd>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

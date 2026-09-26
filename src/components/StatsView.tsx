@@ -41,7 +41,6 @@ import {
   getWeeklyStats,
   formatMinutesHuman,
   recordFocusMinutes,
-  recordTaskCompletion,
   resetStatsToDemo,
   DayStatsRecord,
   getStreakTelemetry,
@@ -111,12 +110,6 @@ export const StatsView: React.FC<StatsViewProps> = ({
   // Add quick simulated focus session for rapid testing
   const handleQuickAddSession = (minutes: number = 25) => {
     recordFocusMinutes(minutes, true);
-    setRefreshTrigger((prev) => prev + 1);
-  };
-
-  // Add quick simulated completed task
-  const handleQuickAddTask = () => {
-    recordTaskCompletion(1);
     setRefreshTrigger((prev) => prev + 1);
   };
 
@@ -212,10 +205,16 @@ export const StatsView: React.FC<StatsViewProps> = ({
     return null;
   };
 
+  const canScroll = !isFullscreen && clockSettings?.enableScrolling !== false;
+
   return (
     <div
       id="stats-view-container"
-      className={`relative w-full h-screen overflow-hidden flex flex-col justify-between font-sans select-none transition-colors duration-500 ${bgClass}`}
+      className={`relative w-full flex flex-col justify-between font-sans select-none transition-colors duration-500 ${bgClass} ${
+        canScroll
+          ? 'min-h-screen overflow-y-auto overflow-x-hidden pb-16'
+          : 'h-screen overflow-hidden pb-0'
+      }`}
     >
       {/* Ambient background soft glow */}
       <div
@@ -325,7 +324,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
       </header>
 
       {/* Main Dashboard Content - Viewport Fitted Full Width */}
-      <main className="w-full px-4 sm:px-8 py-2 sm:py-3 flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto lg:overflow-hidden">
+      <main className="w-full px-4 sm:px-8 py-2 sm:py-3 flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto">
         {/* Date Selector & Top Controls Row */}
         <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-neutral-200/50 dark:border-neutral-800/50 shrink-0">
           {/* Week Navigation */}
@@ -426,20 +425,6 @@ export const StatsView: React.FC<StatsViewProps> = ({
               >
                 <Plus className="w-3 h-3" />
                 <span>+25m</span>
-              </button>
-
-              <button
-                id="stats-add-task-btn"
-                onClick={handleQuickAddTask}
-                className={`apple-hover flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold border cursor-pointer ${
-                  isDarkMode
-                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                    : 'border-emerald-500/40 bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-                }`}
-                title="Simulate completing a task"
-              >
-                <Plus className="w-3 h-3" />
-                <span>+1 Task</span>
               </button>
 
               <button
@@ -799,7 +784,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
             </div>
 
             <div className="flex items-center justify-between text-[10px] pt-1.5 border-t border-neutral-200/50 dark:border-neutral-800/50 text-neutral-400 shrink-0">
-              <span>Click "+25m" or "+1 Task" to test live updates</span>
+              <span>Click "+25m" to test live updates</span>
               <span className="font-semibold text-amber-500">{weeklyData.activeDaysCount} active days recorded</span>
             </div>
           </div>

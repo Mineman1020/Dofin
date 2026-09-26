@@ -1,16 +1,20 @@
 import React, { useMemo } from 'react';
-import { AmbientThemeId } from '../types';
+import { AmbientThemeId, PomodoroPhase } from '../types';
 
 interface AmbientBackgroundProps {
   ambientTheme?: AmbientThemeId;
   particles?: boolean;
   className?: string;
+  pomodoroPhase?: PomodoroPhase;
+  syncPhase?: boolean;
 }
 
 export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
   ambientTheme = 'none',
   particles = true,
   className = '',
+  pomodoroPhase,
+  syncPhase = false,
 }) => {
   // Pre-generate stable random distributions for particles
   const starfield = useMemo(() => {
@@ -87,12 +91,44 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
     return null;
   }
 
+  // Phase-adaptive subtle color shift parameters
+  // Work: Rich focus intensity, warm/sharp clarity
+  // Short Break: Calming cyan/teal cooling wash, gentle relaxed luminescence
+  // Long Break: Soothing emerald/sage restorative depth, deep calm
+  const phaseFilter = useMemo(() => {
+    if (!syncPhase || !pomodoroPhase) return undefined;
+    switch (pomodoroPhase) {
+      case 'work':
+        // Crisper, slightly warmer focus contrast
+        return 'contrast(102%) saturate(104%)';
+      case 'shortBreak':
+        // Calming cool relaxation: slight hue rotation towards cool cyan/blue, soft luminous glow
+        return 'hue-rotate(18deg) saturate(92%) brightness(98%)';
+      case 'longBreak':
+        // Deep restorative rest: gentle emerald/teal shift, soothing ambient softness
+        return 'hue-rotate(36deg) saturate(88%) brightness(96%)';
+    }
+  }, [syncPhase, pomodoroPhase]);
+
   return (
     <div
       id={`ambient-canvas-${ambientTheme}`}
       aria-hidden="true"
-      className={`absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0 select-none ${className}`}
+      className={`absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0 select-none transition-all duration-1000 ease-in-out ${className}`}
+      style={{ filter: phaseFilter }}
     >
+      {/* Subtle Chromatic Phase Mood Atmospheric Wash */}
+      {syncPhase && pomodoroPhase && (
+        <div
+          className={`absolute inset-0 z-10 pointer-events-none transition-all duration-1000 ease-in-out ${
+            pomodoroPhase === 'work'
+              ? 'opacity-0 bg-transparent'
+              : pomodoroPhase === 'shortBreak'
+              ? 'opacity-25 bg-gradient-to-b from-sky-900/30 via-cyan-950/20 to-teal-900/35 mix-blend-color'
+              : 'opacity-30 bg-gradient-to-b from-emerald-950/35 via-teal-900/25 to-slate-950/40 mix-blend-color'
+          }`}
+        />
+      )}
       {/* BEACHSIDE SUNSET */}
       {ambientTheme === 'beachside-sunset' && (
         <div className="absolute inset-0 w-full h-full bg-[#120720] overflow-hidden">

@@ -89,6 +89,7 @@ export interface ClockSettings {
   hourlyChime: boolean;
   brightness: number; // 20 to 100
   antiBurnIn: boolean;
+  enableScrolling?: boolean; // Vertical scrolling enabled when screen is not full screen (default: true)
   // Ambient Immersive Modes
   ambientTheme?: AmbientThemeId;
   ambientSoundEnabled?: boolean;
@@ -152,6 +153,7 @@ export interface PomodoroSettings {
   fontFamily?: ClockFontFamily;
   circleSize?: number;
   timerFontSize?: number; // Custom font size for pomodoro timer numbers
+  verticalOffset?: number; // Upward/downward adjustment for pomodoro circle (in px, negative = moved upward)
 
   // Pomodoro Meter & Theme Customization
   themeId?: string; // 'sync' | preset id | 'custom'
@@ -168,6 +170,7 @@ export interface PomodoroSettings {
   ambientSoundEnabled?: boolean;
   ambientSoundVolume?: number; // 0 to 100
   ambientParticles?: boolean;
+  ambientPhaseSync?: boolean; // Synchronize ambient colors subtly with work/break phases
 }
 
 export type PomodoroPhase = 'work' | 'shortBreak' | 'longBreak';
