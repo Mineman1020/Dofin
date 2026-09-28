@@ -91,7 +91,7 @@ export const ShortcutsSheet: React.FC<ShortcutsSheetProps> = ({
   const clockShortcuts: ShortcutItem[] = [
     { keys: ['?', '\\'], description: 'Toggle this shortcuts sheet' },
     { keys: ['T'], description: 'Quick switch to Pomodoro Timer' },
-    { keys: ['F'], description: 'Toggle Fullscreen display' },
+    { keys: ['F11'], description: 'Toggle Fullscreen display' },
     { keys: ['S'], description: 'Open Wallpaper, Font & Audio Settings' },
     { keys: ['D'], description: 'Toggle Light / Dark mode' },
     { keys: ['Esc'], description: 'Return to Welcome Hub' },
@@ -101,7 +101,7 @@ export const ShortcutsSheet: React.FC<ShortcutsSheetProps> = ({
     { keys: ['?', '\\'], description: 'Toggle this shortcuts sheet' },
     { keys: ['Space'], description: 'Start or pause focus interval' },
     { keys: ['C'], description: 'Quick switch to Desk Clock' },
-    { keys: ['F'], description: 'Toggle Fullscreen display' },
+    { keys: ['F11'], description: 'Toggle Fullscreen display' },
     { keys: ['S'], description: 'Open Pomodoro & Interval Settings' },
     { keys: ['D'], description: 'Toggle Light / Dark mode' },
     { keys: ['Esc'], description: 'Return to Welcome Hub' },
@@ -110,7 +110,7 @@ export const ShortcutsSheet: React.FC<ShortcutsSheetProps> = ({
   const tasksShortcuts: ShortcutItem[] = [
     { keys: ['?', '\\'], description: 'Toggle this shortcuts sheet' },
     { keys: ['A'], description: 'Switch to Weekly Stats & Analytics' },
-    { keys: ['F'], description: 'Toggle Fullscreen display' },
+    { keys: ['F11'], description: 'Toggle Fullscreen display' },
     { keys: ['S'], description: 'Open Settings' },
     { keys: ['D'], description: 'Toggle Light / Dark mode' },
     { keys: ['Esc'], description: 'Return to Welcome Hub' },
@@ -119,7 +119,7 @@ export const ShortcutsSheet: React.FC<ShortcutsSheetProps> = ({
   const statsShortcuts: ShortcutItem[] = [
     { keys: ['?', '\\'], description: 'Toggle this shortcuts sheet' },
     { keys: ['T'], description: 'Switch to Task Tracker' },
-    { keys: ['F'], description: 'Toggle Fullscreen display' },
+    { keys: ['F11'], description: 'Toggle Fullscreen display' },
     { keys: ['S'], description: 'Open Settings' },
     { keys: ['D'], description: 'Toggle Light / Dark mode' },
     { keys: ['Esc'], description: 'Return to Welcome Hub' },

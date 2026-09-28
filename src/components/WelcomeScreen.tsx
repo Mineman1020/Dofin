@@ -23,6 +23,7 @@ import {
 import { ClockSettings, PomodoroSettings, ViewMode } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS } from '../utils/constants';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
+import { useFullscreen } from '../utils/useFullscreen';
 
 interface WelcomeScreenProps {
   userName: string;
@@ -237,21 +238,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     },
   };
 
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
-    return Boolean(typeof document !== 'undefined' && document.fullscreenElement);
-  });
-
-  useEffect(() => {
-    const handleFsChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-    document.addEventListener('fullscreenchange', handleFsChange);
-    document.addEventListener('webkitfullscreenchange', handleFsChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFsChange);
-      document.removeEventListener('webkitfullscreenchange', handleFsChange);
-    };
-  }, []);
+  // Fullscreen state with multi-source detection
+  const { isFullscreen } = useFullscreen();
 
   const canScroll = !isFullscreen && clockSettings.enableScrolling !== false;
 

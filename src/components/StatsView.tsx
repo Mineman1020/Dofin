@@ -45,6 +45,7 @@ import {
   DayStatsRecord,
   getStreakTelemetry,
 } from '../utils/statsStorage';
+import { useFullscreen } from '../utils/useFullscreen';
 
 interface StatsViewProps {
   clockSettings: ClockSettings;
@@ -77,7 +78,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [chartViewMode, setChartViewMode] = useState<'combined' | 'focus' | 'tasks' | 'cumulative'>('combined');
   const [unitMode, setUnitMode] = useState<'minutes' | 'hours'>('minutes');
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const { isFullscreen, toggleFullscreen } = useFullscreen();
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
   // Compute weekly statistics
@@ -91,21 +92,6 @@ export const StatsView: React.FC<StatsViewProps> = ({
     return getStreakTelemetry();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger]);
-
-  // Fullscreen toggle handler
-  const toggleFullscreen = async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-      } else {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      }
-    } catch (e) {
-      console.warn('Fullscreen error:', e);
-    }
-  };
 
   // Add quick simulated focus session for rapid testing
   const handleQuickAddSession = (minutes: number = 25) => {
@@ -286,7 +272,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
                 ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
                 : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-700'
             }`}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+            title={isFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'}
           >
             {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
           </button>

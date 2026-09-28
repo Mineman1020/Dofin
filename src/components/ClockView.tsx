@@ -35,6 +35,7 @@ import { processImageFile, isSupportedImageFile } from '../utils/imageProcessor'
 import { generateSubjectMask } from '../utils/subjectSegmenter';
 import { AmbientBackground } from './AmbientBackground';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
+import { useFullscreen } from '../utils/useFullscreen';
 
 interface ClockViewProps {
   settings: ClockSettings;
@@ -68,7 +69,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
   onToggleDarkMode,
 }) => {
   const [time, setTime] = useState<Date>(new Date());
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const { isFullscreen, toggleFullscreen } = useFullscreen();
   const [controlsVisible, setControlsVisible] = useState<boolean>(true);
   const [driftOffset, setDriftOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -371,31 +372,6 @@ export const ClockView: React.FC<ClockViewProps> = ({
       window.removeEventListener('touchstart', onTouch);
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
     };
-  }, []);
-
-  // Fullscreen management
-  const toggleFullscreen = async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-      } else {
-        if (document.exitFullscreen) {
-          await document.exitFullscreen();
-          setIsFullscreen(false);
-        }
-      }
-    } catch (e) {
-      console.debug('Fullscreen error:', e);
-    }
-  };
-
-  useEffect(() => {
-    const handleFsChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handleFsChange);
-    return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
 
   // Resolve theme styles respecting user's explicit theme preset or ambient theme
@@ -753,7 +729,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
                 ? 'border-neutral-300/80 bg-white/70 hover:bg-white text-neutral-800'
                 : 'border-white/10 bg-black/40 hover:bg-black/60 text-white'
             }`}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen (Laptop Desk View)'}
+            title={isFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11 - Laptop Desk View)'}
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>

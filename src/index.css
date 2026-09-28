@@ -429,5 +429,38 @@ html {
   background: rgba(150, 150, 150, 0.48);
 }
 
+/* Fullscreen Window & Viewport Scroll Lock */
+html.app-fullscreen,
+body.app-fullscreen {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  height: 100% !important;
+  width: 100% !important;
+}
+
+/* Custom Scrollbar for list views like Tasks & Stats */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150, 150, 150, 0.3) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.28);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.48);
+}
+
 
 

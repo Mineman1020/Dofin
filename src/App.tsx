@@ -17,6 +17,7 @@ import { PartyModal } from './components/PartyModal';
 import { StartupReveal } from './components/StartupReveal';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { usePomodoroTimer } from './utils/usePomodoroTimer';
+import { useFullscreen } from './utils/useFullscreen';
 
 const STORAGE_KEYS = {
   USER_NAME: 'desk_clock_user_name',
@@ -124,34 +125,8 @@ export default function App() {
   // Continuous Pomodoro Engine (resilient to view switching and midnight rollover)
   const pomodoroTimer = usePomodoroTimer(pomodoroSettings);
 
-  // Fullscreen State & Controller
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
-    return Boolean(typeof document !== 'undefined' && document.fullscreenElement);
-  });
-
-  useEffect(() => {
-    const handleFsChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-    document.addEventListener('fullscreenchange', handleFsChange);
-    document.addEventListener('webkitfullscreenchange', handleFsChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFsChange);
-      document.removeEventListener('webkitfullscreenchange', handleFsChange);
-    };
-  }, []);
-
-  const handleToggleFullscreen = () => {
-    try {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen?.().catch(() => {});
-      } else {
-        document.exitFullscreen?.().catch(() => {});
-      }
-    } catch (e) {
-      console.debug('Fullscreen error:', e);
-    }
-  };
+  // Fullscreen State & Controller using multi-layered detection (Fullscreen API, CSS media queries, and window metrics)
+  const { isFullscreen, toggleFullscreen: handleToggleFullscreen } = useFullscreen();
 
   // User activity tracker for smooth auto-fading in ambient views
   const [isAppIdle, setIsAppIdle] = useState<boolean>(false);
@@ -305,8 +280,9 @@ export default function App() {
         return;
       }
 
-      // 6. Fullscreen toggle
-      if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // 6. Fullscreen toggle with F11 (prevent browser default to ensure unified Fullscreen API handling)
+      if (e.key === 'F11') {
+        e.preventDefault();
         handleToggleFullscreen();
         return;
       }
@@ -417,6 +393,8 @@ export default function App() {
               userName={userName || 'Friend'}
               isDarkMode={isDarkMode}
               onToggleDarkMode={handleToggleDarkMode}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={handleToggleFullscreen}
             />
           )}
 
@@ -544,11 +522,11 @@ export default function App() {
                 ? 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
                 : 'border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100'
             }`}
-            title="Enter Full Screen (Press F)"
+            title="Enter Full Screen (Press F11)"
           >
             <Maximize2 className="w-3 h-3" />
             <span>Full Screen</span>
-            <kbd className="text-[9px] font-mono px-1 py-0.2 rounded border border-current opacity-70 ml-0.5">F</kbd>
+            <kbd className="text-[9px] font-mono px-1 py-0.2 rounded border border-current opacity-70 ml-0.5">F11</kbd>
           </button>
         </div>
       )}

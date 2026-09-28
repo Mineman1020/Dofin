@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { ClockSettings, PomodoroSettings, PomodoroTask } from '../types';
 import { recordTaskCompletion } from '../utils/statsStorage';
+import { useFullscreen } from '../utils/useFullscreen';
 
 interface TaskTrackerViewProps {
   clockSettings: ClockSettings;
@@ -105,16 +106,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
 
   // Fullscreen state
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => !!document.fullscreenElement);
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen().catch(() => {});
-      setIsFullscreen(false);
-    }
-  };
+  const { isFullscreen, toggleFullscreen } = useFullscreen();
 
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,16 +191,10 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
     day: 'numeric',
   });
 
-  const canScroll = !isFullscreen && clockSettings?.enableScrolling !== false;
-
   return (
     <div
       id="task-tracker-view"
-      className={`relative w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-500 ${
-        canScroll
-          ? 'min-h-screen overflow-y-auto pb-16'
-          : 'h-screen overflow-hidden pb-0'
-      } ${
+      className={`relative w-full h-full min-h-screen flex flex-col justify-between overflow-hidden transition-colors duration-500 ${
         isDarkMode ? 'bg-neutral-950 text-neutral-100' : 'bg-[#f7f5f0] text-neutral-900'
       }`}
     >
@@ -227,7 +213,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
       {/* Top Navbar */}
       <header
         id="task-tracker-navbar"
-        className={`w-full px-4 sm:px-8 py-3.5 sm:py-4 flex items-center justify-between z-20 border-b backdrop-blur-md transition-colors ${
+        className={`w-full shrink-0 px-4 sm:px-8 py-3.5 sm:py-4 flex items-center justify-between z-20 border-b backdrop-blur-md transition-colors ${
           isDarkMode
             ? 'border-neutral-900 bg-neutral-950/80'
             : 'border-neutral-200/80 bg-white/80'
@@ -308,7 +294,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
                 ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300'
                 : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
             }`}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+            title={isFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'}
           >
             {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
           </button>
@@ -346,8 +332,13 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-10 flex flex-col gap-6 z-10">
+      {/* Dedicated Scrollable Container for Tasks and Footer */}
+      <div
+        id="task-tracker-scroll-container"
+        className="flex-1 w-full min-h-0 overflow-y-auto overflow-x-hidden flex flex-col justify-between custom-scrollbar z-10"
+      >
+        {/* Main Content Area */}
+        <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-10 flex flex-col gap-6 z-10 pb-16">
         {/* Top Summary & Actions Banner */}
         <div
           className={`p-6 sm:p-8 rounded-3xl border shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 transition-all ${
@@ -663,6 +654,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
           Task Tracker · Seamlessly shares your task database with Pomodoro Timer whenever you want to switch.
         </span>
       </footer>
+      </div>
 
       {/* Task Creation Modal */}
       {isCreateModalOpen && (

@@ -58,6 +58,7 @@ import {
 import { recordTaskCompletion } from '../utils/statsStorage';
 import { AmbientBackground } from './AmbientBackground';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
+import { useFullscreen } from '../utils/useFullscreen';
 
 interface PomodoroViewProps {
   settings: PomodoroSettings;
@@ -74,6 +75,8 @@ interface PomodoroViewProps {
   userName: string;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 const TASKS_STORAGE_KEY = 'desk_clock_pomodoro_tasks_v1';
@@ -93,6 +96,8 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   userName,
   isDarkMode,
   onToggleDarkMode,
+  isFullscreen: propIsFullscreen,
+  onToggleFullscreen: propToggleFullscreen,
 }) => {
   const {
     phase,
@@ -112,7 +117,9 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     setActiveTaskId,
   } = timer;
 
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const hookFs = useFullscreen();
+  const isFullscreen = propIsFullscreen !== undefined ? propIsFullscreen : hookFs.isFullscreen;
+  const toggleFullscreen = propToggleFullscreen || hookFs.toggleFullscreen;
 
   // Active ambient theme definition for Pomodoro
   const effectiveAmbientId: AmbientThemeId =
@@ -291,23 +298,6 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [togglePlayPause]);
-
-  // Fullscreen handler
-  const toggleFullscreen = async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-      } else {
-        if (document.exitFullscreen) {
-          await document.exitFullscreen();
-          setIsFullscreen(false);
-        }
-      }
-    } catch {
-      // ignore
-    }
-  };
 
   // Add task handler
   const handleAddTask = (e?: React.FormEvent) => {
@@ -632,13 +622,18 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           {/* Fullscreen */}
           <button
             id="pomo-fullscreen-btn"
-            onClick={toggleFullscreen}
-            className={`apple-icon-hover p-2 rounded-xl text-xs border cursor-pointer ${
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleFullscreen();
+            }}
+            className={`apple-icon-hover p-2 rounded-xl text-xs border cursor-pointer select-none transition-transform duration-200 active:scale-90 ${
               resolvedTheme.isDark
                 ? 'border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white'
                 : 'border-neutral-300/80 bg-white hover:bg-neutral-50 text-neutral-800'
             }`}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+            title={isFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'}
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
