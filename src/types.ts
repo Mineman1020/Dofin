@@ -108,6 +108,7 @@ export interface ClockSettings {
   wallpaperTimestamp?: number;
   introEffect?: IntroEffectId;
   introSound?: boolean;
+  shareStatsWithParty?: boolean; // When false, keeps detailed stats private in study parties (default: true)
 }
 
 export type SoundAlertChoice =
@@ -190,16 +191,30 @@ export type PartyPurpose = 'study' | 'work' | 'coding' | 'reading' | 'creative' 
 
 export type MemberStatus = 'focusing' | 'break' | 'idle';
 
+export interface MemberStatsSnapshot {
+  todayFocusMinutes: number;
+  allTimeFocusMinutes: number;
+  previousFocusMinutes: number;
+  weeklyFocusMinutes: number;
+  currentStreak: number;
+  tasksCompleted: number;
+  completedPomodoros: number;
+}
+
 export interface PartyMember {
   id: string;
   userId: string;
   name: string;
   avatarColor: string;
-  totalFocusMinutes: number;
+  dailyFocusMinutes?: number;
+  lastFocusDate?: string; // YYYY-MM-DD
+  totalFocusMinutes: number; // All-time cumulative minutes
   completedSessions: number;
   currentStatus: MemberStatus;
   lastActiveAt: string;
   joinedAt: string;
+  shareStats?: boolean; // When false, other members see a private profile message
+  statsSnapshot?: MemberStatsSnapshot;
 }
 
 export interface Party {

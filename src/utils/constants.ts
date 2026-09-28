@@ -356,6 +356,7 @@ export const DEFAULT_CLOCK_SETTINGS: ClockSettings = {
   depthIntensity: 60,
   introEffect: 'chronos',
   introSound: true,
+  shareStatsWithParty: true,
 };
 
 export const POMODORO_THEME_PRESETS: PomodoroThemePreset[] = [

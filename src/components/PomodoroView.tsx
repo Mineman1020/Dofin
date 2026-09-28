@@ -555,7 +555,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       {/* Top Header Bar (Disappears when left idle) */}
       <header
         id="pomodoro-header"
-        className={`sticky top-0 left-0 right-0 px-6 py-4 flex items-center justify-between z-20 border-b backdrop-blur-md transition-all duration-700 ease-in-out ${
+        className={`sticky top-0 left-0 right-0 px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between z-20 border-b backdrop-blur-md transition-all duration-700 ease-in-out ${
           isIdle
             ? 'opacity-0 -translate-y-full pointer-events-none'
             : 'opacity-100 translate-y-0 pointer-events-auto'
@@ -673,7 +673,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       {/* Main Pomodoro & Controls Container */}
       <main
         className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col items-center justify-center z-10 transition-all duration-500 ${
-          isIdle ? 'py-4' : 'py-6'
+          isIdle ? 'py-2 sm:py-3' : 'pt-2 sm:pt-3 pb-6 sm:pb-8'
         }`}
       >
         {/* Phase Pill Selector */}
@@ -682,7 +682,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           className={`flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-inner transition-all duration-700 ease-in-out shrink-0 ${
             isIdle
               ? 'opacity-0 -translate-y-4 pointer-events-none max-h-0 mb-0 py-0 border-transparent overflow-hidden'
-              : 'opacity-100 translate-y-0 pointer-events-auto max-h-16 mb-5'
+              : 'opacity-100 translate-y-0 pointer-events-auto max-h-16 mb-3 sm:mb-4'
           }`}
           style={{
             backgroundColor: resolvedTheme.cardBg,
@@ -739,7 +739,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         </div>
 
         {/* Central Display: Circle on Left/Center, and Vertical Controls + Tasks on the Right */}
-        <div className="flex flex-col lg:flex-row items-center justify-center gap-6 sm:gap-8 lg:gap-10 my-auto w-full transition-all duration-700">
+        <div className="flex flex-col lg:flex-row items-center justify-center gap-6 sm:gap-8 lg:gap-10 my-auto -translate-y-5 sm:-translate-y-8 lg:-translate-y-10 w-full transition-all duration-700">
           {/* 1. Timer Circle (Centrally aligned with square aspect ratio) */}
           <div
             id="pomodoro-timer-circle"
