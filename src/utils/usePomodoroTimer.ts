@@ -51,6 +51,7 @@ export interface PomodoroTimerController {
   handleAddMinute: () => void;
   handleMinusMinute: () => void;
   switchPhase: (nextPhase: PomodoroPhase, autoStart?: boolean) => void;
+  startPresetTimer: (minutes: number, targetPhase?: PomodoroPhase) => void;
   setActiveTaskId: (id: string | null) => void;
   getTotalTimeForPhase: (p: PomodoroPhase) => number;
 }
@@ -647,6 +648,44 @@ export function usePomodoroTimer(settings: PomodoroSettings): PomodoroTimerContr
     });
   }, [isRunning, saveStateToDisk]);
 
+  // Launch an immediate preset session with a specified duration (in minutes)
+  const startPresetTimer = useCallback(
+    (minutes: number, targetPhase: PomodoroPhase = 'work') => {
+      const durationSec = Math.max(1, Math.round(minutes * 60));
+      const now = Date.now();
+      const nextEnd = now + durationSec * 1000;
+
+      phaseRef.current = targetPhase;
+      setPhase(targetPhase);
+      setTimeLeft(durationSec);
+      timeLeftRef.current = durationSec;
+      lastSecondTickRef.current = durationSec;
+      endTimeRef.current = nextEnd;
+      setIsRunning(true);
+
+      let currentFocusStart = now;
+      if (targetPhase === 'work') {
+        focusSessionStartTimeRef.current = currentFocusStart;
+        setFocusSessionStartTime(currentFocusStart);
+      }
+
+      if (settingsRef.current.soundAlerts) {
+        playPomodoroStart();
+      }
+
+      saveStateToDisk(
+        durationSec,
+        true,
+        nextEnd,
+        targetPhase,
+        currentRoundRef.current,
+        activeTaskIdRef.current,
+        targetPhase === 'work' ? currentFocusStart : null
+      );
+    },
+    [saveStateToDisk]
+  );
+
   // Select active task
   const handleSetActiveTaskId = useCallback(
     (id: string | null) => {
@@ -685,6 +724,7 @@ export function usePomodoroTimer(settings: PomodoroSettings): PomodoroTimerContr
     handleAddMinute,
     handleMinusMinute,
     switchPhase,
+    startPresetTimer,
     setActiveTaskId: handleSetActiveTaskId,
     getTotalTimeForPhase,
   };

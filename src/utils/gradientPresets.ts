@@ -1,0 +1,218 @@
+import type { CSSProperties } from 'react';
+import { GradientPreset, ClockSettings } from '../types';
+
+export const GRADIENT_PRESETS: GradientPreset[] = [
+  {
+    id: 'sunset-blaze',
+    name: 'Sunset Blaze',
+    gradient: 'linear-gradient(135deg, #f59e0b 0%, #f43f5e 50%, #e11d48 100%)',
+    preview: 'from-amber-500 via-rose-500 to-rose-600',
+  },
+  {
+    id: 'cyber-neon',
+    name: 'Cyber Neon',
+    gradient: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #a855f7 100%)',
+    preview: 'from-cyan-500 via-blue-500 to-purple-500',
+  },
+  {
+    id: 'emerald-mint',
+    name: 'Emerald Aurora',
+    gradient: 'linear-gradient(135deg, #10b981 0%, #14b8a6 50%, #06b6d4 100%)',
+    preview: 'from-emerald-500 via-teal-500 to-cyan-500',
+  },
+  {
+    id: 'electric-gold',
+    name: 'Electric Gold',
+    gradient: 'linear-gradient(135deg, #fef08a 0%, #eab308 50%, #ca8a04 100%)',
+    preview: 'from-yellow-200 via-yellow-500 to-yellow-600',
+  },
+  {
+    id: 'cosmic-nebula',
+    name: 'Cosmic Nebula',
+    gradient: 'linear-gradient(135deg, #f472b6 0%, #c084fc 50%, #6366f1 100%)',
+    preview: 'from-pink-400 via-purple-400 to-indigo-500',
+  },
+  {
+    id: 'nordic-ice',
+    name: 'Nordic Frost',
+    gradient: 'linear-gradient(135deg, #e0f2fe 0%, #38bdf8 50%, #818cf8 100%)',
+    preview: 'from-sky-100 via-sky-400 to-indigo-400',
+  },
+  {
+    id: 'chrome-silver',
+    name: 'Lustrous Chrome',
+    gradient: 'linear-gradient(135deg, #ffffff 0%, #cbd5e1 50%, #64748b 100%)',
+    preview: 'from-white via-slate-300 to-slate-500',
+  },
+  {
+    id: 'solar-flare',
+    name: 'Solar Flare',
+    gradient: 'linear-gradient(135deg, #fed7aa 0%, #fb923c 50%, #ea580c 100%)',
+    preview: 'from-orange-200 via-orange-400 to-orange-600',
+  },
+  {
+    id: 'deep-synthwave',
+    name: 'Deep Synthwave',
+    gradient: 'linear-gradient(135deg, #ff007f 0%, #7928ca 100%)',
+    preview: 'from-pink-600 to-purple-700',
+  },
+];
+
+/**
+ * Returns CSS properties for gradient or solid text based on settings.
+ */
+export function getClockDigitTextStyle(
+  settings: ClockSettings,
+  resolvedSolidColor: string
+): CSSProperties {
+  if (settings.colorMode === 'gradient') {
+    const preset =
+      GRADIENT_PRESETS.find((p) => p.id === settings.gradientPresetId) ||
+      GRADIENT_PRESETS[0];
+    return {
+      backgroundImage: preset.gradient,
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+      color: 'transparent',
+    };
+  }
+
+  if (settings.colorMode === 'custom-gradient') {
+    const start = settings.customGradientStart || '#f59e0b';
+    const end = settings.customGradientEnd || '#f43f5e';
+    const angle = settings.customGradientAngle ?? 135;
+    const gradient = `linear-gradient(${angle}deg, ${start} 0%, ${end} 100%)`;
+
+    return {
+      backgroundImage: gradient,
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+      color: 'transparent',
+    };
+  }
+
+  // Solid color fallback
+  return {
+    color: resolvedSolidColor,
+  };
+}
+
+/**
+ * Convert hex color to HSL
+ */
+export function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  let c = hex.replace('#', '').trim();
+  if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+  const num = parseInt(c, 16);
+  if (isNaN(num)) return { h: 38, s: 92, l: 50 }; // default amber
+  const r = (num >> 16) / 255;
+  const g = ((num >> 8) & 255) / 255;
+  const b = (num & 255) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      case b:
+        h = (r - g) / d + 4;
+        break;
+    }
+    h = Math.round(h * 60);
+  }
+  return { h, s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+/**
+ * Gets the dominant primary color for clock elements from settings
+ */
+export function getDominantClockColor(settings: ClockSettings, fallbackSolidColor: string): string {
+  if (settings.colorMode === 'gradient') {
+    const preset =
+      GRADIENT_PRESETS.find((p) => p.id === settings.gradientPresetId) ||
+      GRADIENT_PRESETS[0];
+    if (preset) {
+      const hexMatch = preset.gradient.match(/#(?:[0-9a-fA-F]{3}){1,2}/);
+      if (hexMatch) return hexMatch[0];
+    }
+  } else if (settings.colorMode === 'custom-gradient') {
+    if (settings.customGradientStart) return settings.customGradientStart;
+  }
+  return settings.customTextColor || fallbackSolidColor || '#f59e0b';
+}
+
+/**
+ * Robustly resolves both text and accent colors for any clock style
+ * based on selected solid colors, gradient presets, or dual blend
+ */
+export function getClockResolvedColors(
+  settings: ClockSettings,
+  defaultThemeTextColor: string,
+  defaultThemeAccentColor: string
+): { textColor: string; accentColor: string } {
+  if (settings.colorMode === 'gradient') {
+    const preset =
+      GRADIENT_PRESETS.find((p) => p.id === settings.gradientPresetId) ||
+      GRADIENT_PRESETS[0];
+    const hexes = preset.gradient.match(/#(?:[0-9a-fA-F]{3}){1,2}/g) || [];
+    const textCol = hexes[0] || settings.customTextColor || defaultThemeTextColor;
+    const accentCol = hexes[1] || hexes[0] || settings.customAccentColor || defaultThemeAccentColor;
+    return { textColor: textCol, accentColor: accentCol };
+  }
+
+  if (settings.colorMode === 'custom-gradient') {
+    const textCol = settings.customGradientStart || settings.customTextColor || defaultThemeTextColor;
+    const accentCol = settings.customGradientEnd || settings.customAccentColor || defaultThemeAccentColor;
+    return { textColor: textCol, accentColor: accentCol };
+  }
+
+  // Solid color mode
+  const textCol = settings.customTextColor || defaultThemeTextColor;
+  const accentCol = settings.customAccentColor || settings.customTextColor || defaultThemeAccentColor;
+  return { textColor: textCol, accentColor: accentCol };
+}
+
+/**
+ * Computes the matched or contrast background styling based on font color
+ */
+export function getMatchedBackgroundStyle(
+  settings: ClockSettings,
+  fallbackSolidColor: string
+): CSSProperties | null {
+  if (!settings.matchedBackground || settings.matchedBackground === 'off') {
+    return null;
+  }
+
+  const primaryColor = getDominantClockColor(settings, fallbackSolidColor);
+  const { h, s } = hexToHsl(primaryColor);
+
+  if (settings.matchedBackground === 'matched') {
+    return {
+      backgroundColor: `hsl(${h}, ${Math.min(45, Math.round(s * 0.5))}%, 6%)`,
+      backgroundImage: `radial-gradient(circle at 50% 50%, hsl(${h}, ${Math.min(65, Math.round(s * 0.75))}%, 13%) 0%, hsl(${h}, ${Math.min(40, Math.round(s * 0.4))}%, 4%) 100%)`,
+    };
+  }
+
+  if (settings.matchedBackground === 'contrast') {
+    const contrastHue = (h + 180) % 360;
+    return {
+      backgroundColor: `hsl(${contrastHue}, ${Math.min(50, Math.round(s * 0.6))}%, 5%)`,
+      backgroundImage: `radial-gradient(circle at 50% 50%, hsl(${contrastHue}, ${Math.min(70, Math.round(s * 0.8))}%, 14%) 0%, hsl(${contrastHue}, ${Math.min(45, Math.round(s * 0.5))}%, 4%) 100%)`,
+    };
+  }
+
+  return null;
+}

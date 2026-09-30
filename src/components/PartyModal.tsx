@@ -24,8 +24,11 @@ import {
   Send,
   Lock,
   Unlock,
+  Shield,
   ShieldAlert,
   ShieldCheck,
+  TrendingUp,
+  CheckCircle2,
 } from 'lucide-react';
 import { Party, PartyMember, PartyPurpose, PartyMessage } from '../types';
 import {
@@ -43,6 +46,7 @@ import {
 } from '../utils/partyService';
 import { getOrCreateUserId, getOrCreateAvatarColor } from '../utils/firebase';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
+import { formatMinutesHuman } from '../utils/statsStorage';
 
 interface PartyModalProps {
   isOpen: boolean;
@@ -101,17 +105,23 @@ export const PartyModal: React.FC<PartyModalProps> = ({
   const [isSendingMessage, setIsSendingMessage] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Subscribe to real-time party messages
+  // Selected member to inspect detailed stats & previous focus history
+  const [selectedMemberStats, setSelectedMemberStats] = useState<PartyMember | null>(null);
+
+  // E2E encryption notice banner (disappears after 2 or 3 chats or manual dismissal)
+  const [e2eeBannerDismissed, setE2eeBannerDismissed] = useState<boolean>(false);
+
+  // Subscribe to real-time party messages with E2EE decryption
   useEffect(() => {
     if (!activeParty?.id) {
       setAllMessages([]);
       return;
     }
-    const unsub = subscribeToPartyMessages(activeParty.id, (msgs) => {
+    const unsub = subscribeToPartyMessages(activeParty.id, activeParty.code || '', (msgs) => {
       setAllMessages(msgs);
     });
     return () => unsub();
-  }, [activeParty?.id]);
+  }, [activeParty?.id, activeParty?.code]);
 
   // Condition 2: A user can receive messages ONLY when their focus session is over.
   // NOTE: The user cannot receive messages even if he pauses the focus session!
@@ -181,7 +191,7 @@ export const PartyModal: React.FC<PartyModalProps> = ({
     try {
       const userMember = leaderboard.find((m) => m.userId === currentUserId);
       const color = userMember?.avatarColor || getOrCreateAvatarColor();
-      await sendPartyMessage(activeParty.id, textToSend, userName || 'Focus Friend', color);
+      await sendPartyMessage(activeParty.id, activeParty.code || '', textToSend, userName || 'Focus Friend', color);
       if (!customText) {
         setChatInput('');
       }
@@ -381,7 +391,10 @@ export const PartyModal: React.FC<PartyModalProps> = ({
   const currentPurpose = activeParty ? PURPOSE_CONFIG[activeParty.purpose] || PURPOSE_CONFIG.study : PURPOSE_CONFIG.study;
   const PurposeIcon = currentPurpose.icon;
 
-  const maxMinutesInLeaderboard = leaderboard.length > 0 ? Math.max(1, leaderboard[0].totalFocusMinutes) : 1;
+  const maxMinutesInLeaderboard =
+    leaderboard.length > 0
+      ? Math.max(1, ...leaderboard.map((m) => m.dailyFocusMinutes ?? m.totalFocusMinutes))
+      : 1;
 
   return (
     <div
@@ -632,10 +645,15 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                   {/* Leaderboard Table / Rankings */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-2">
-                        <Trophy className="w-4 h-4 text-amber-400" />
-                        <span>Focus Time Leaderboard</span>
-                      </label>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-2">
+                          <Trophy className="w-4 h-4 text-amber-400" />
+                          <span>Today&apos;s Leaderboard</span>
+                        </label>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 hidden sm:inline-block">
+                          Resets Daily at 12:00 AM
+                        </span>
+                      </div>
                       <button
                         onClick={() => {
                           if (isFocusRunning) {
@@ -664,26 +682,34 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                           const isSecond = index === 1;
                           const isThird = index === 2;
 
-                          // Format total time nicely
-                          const hrs = Math.floor(member.totalFocusMinutes / 60);
-                          const mins = member.totalFocusMinutes % 60;
-                          const formattedTime =
-                            hrs > 0
-                              ? `${hrs}h ${mins}m`
-                              : `${mins} mins`;
+                          // Daily focus time (reset every midnight)
+                          const dailyMins = member.dailyFocusMinutes ?? 0;
+                          const dailyHrs = Math.floor(dailyMins / 60);
+                          const dailyRemainingMins = dailyMins % 60;
+                          const formattedTodayTime =
+                            dailyHrs > 0
+                              ? `${dailyHrs}h ${dailyRemainingMins}m`
+                              : `${dailyRemainingMins}m`;
 
-                          const percent = Math.min(100, Math.round((member.totalFocusMinutes / maxMinutesInLeaderboard) * 100));
+                          // All-time / previous focus time
+                          const totalMins = member.totalFocusMinutes || 0;
+                          const prevMins = member.statsSnapshot?.previousFocusMinutes ?? Math.max(0, totalMins - dailyMins);
+                          const formattedPrevTime = formatMinutesHuman(prevMins);
+
+                          const percent = Math.min(100, Math.round((dailyMins / maxMinutesInLeaderboard) * 100));
 
                           return (
                             <div
                               key={member.id}
-                              className={`p-3.5 rounded-xl border transition-all relative overflow-hidden flex items-center justify-between gap-3 ${
+                              onClick={() => setSelectedMemberStats(member)}
+                              className={`p-3.5 rounded-xl border transition-all relative overflow-hidden flex items-center justify-between gap-3 cursor-pointer group ${
                                 isCurrentUser
-                                  ? 'bg-amber-400/10 border-amber-400/40 shadow-sm'
+                                  ? 'bg-amber-400/10 border-amber-400/40 hover:border-amber-400/70 shadow-sm'
                                   : isFirst
-                                  ? 'bg-neutral-950/90 border-amber-500/30'
-                                  : 'bg-neutral-950/50 border-neutral-800'
+                                  ? 'bg-neutral-950/90 border-amber-500/30 hover:border-amber-400/50'
+                                  : 'bg-neutral-950/50 border-neutral-800 hover:border-neutral-700'
                               }`}
+                              title="Click to view focus statistics and history"
                             >
                               {/* Relative background progress bar */}
                               <div
@@ -717,7 +743,7 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                                 {/* Name & Status */}
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-sm font-semibold text-neutral-100 truncate">
+                                    <span className="text-sm font-semibold text-neutral-100 truncate group-hover:text-amber-300 transition-colors">
                                       {member.name}
                                     </span>
                                     {isCurrentUser && (
@@ -745,12 +771,15 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                                         <span className="text-neutral-400">Idle</span>
                                       </>
                                     )}
+                                    <span className="text-[10px] text-neutral-500 opacity-0 group-hover:opacity-100 transition-opacity ml-1 hidden sm:inline">
+                                      · Click for stats 📊
+                                    </span>
                                   </div>
                                 </div>
                               </div>
 
                               {/* Right: Pomodoro count & Focus Time */}
-                              <div className="flex items-center gap-3 relative z-10 text-right flex-shrink-0">
+                              <div className="flex items-center gap-2.5 relative z-10 text-right flex-shrink-0">
                                 <div className="text-[11px] text-neutral-400 hidden sm:block">
                                   <span className="font-mono text-neutral-300 font-semibold">
                                     {member.completedSessions}
@@ -758,13 +787,18 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                                   <span>sessions</span>
                                 </div>
 
-                                <div className="bg-neutral-900 border border-neutral-700/80 px-3 py-1.5 rounded-lg text-right min-w-[80px]">
+                                <div className="bg-neutral-900 border border-neutral-700/80 px-3 py-1.5 rounded-lg text-right min-w-[85px] group-hover:border-amber-500/60 transition-colors">
                                   <span className="text-xs font-mono font-bold text-amber-400 block">
-                                    {formattedTime}
+                                    {formattedTodayTime}
                                   </span>
-                                  <span className="text-[9px] uppercase tracking-wider text-neutral-400 block font-mono">
-                                    Total Focus
-                                  </span>
+                                  <div className="flex items-center justify-end gap-1 text-[9px] uppercase tracking-wider text-neutral-400 font-mono">
+                                    <span>Today</span>
+                                    {prevMins > 0 && (
+                                      <span className="text-neutral-500 hidden md:inline">
+                                        · {formattedPrevTime} prev
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -887,6 +921,29 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                             aria-label="Dismiss notice"
                           >
                             <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* End-to-End Encryption Notice in small letters (disappears after 2 or 3 chats or manual dismissal) */}
+                      {!e2eeBannerDismissed && allMessages.length <= 2 && (
+                        <div
+                          id="e2ee-chat-notice-banner"
+                          className="px-3 py-1.5 rounded-xl bg-neutral-900/70 border border-neutral-800/80 flex items-center justify-between gap-2 animate-fadeIn text-[11px] text-neutral-400"
+                        >
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="text-emerald-400 text-xs">🔒</span>
+                            <span className="font-mono text-[10.5px] text-neutral-300">
+                              Messages in this party are end-to-end encrypted. Only room members can read them.
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setE2eeBannerDismissed(true)}
+                            className="p-0.5 rounded text-neutral-500 hover:text-neutral-300 cursor-pointer shrink-0"
+                            title="Dismiss notice"
+                          >
+                            <X className="w-3 h-3" />
                           </button>
                         </div>
                       )}
@@ -1303,6 +1360,195 @@ export const PartyModal: React.FC<PartyModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Member Stats Popup Dialog */}
+      {selectedMemberStats && (
+        <div
+          id="member-stats-modal-overlay"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedMemberStats(null);
+          }}
+        >
+          <div className="w-full max-w-md p-6 rounded-2xl bg-neutral-900 border border-neutral-800 shadow-2xl text-neutral-100 space-y-5 animate-scaleUp">
+            {/* Header: Avatar, Name, Status, Close */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-neutral-950 text-base shadow-inner shrink-0"
+                  style={{ backgroundColor: selectedMemberStats.avatarColor || '#f59e0b' }}
+                >
+                  {(selectedMemberStats.name || 'F')[0].toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">
+                      {selectedMemberStats.name}
+                    </h3>
+                    {selectedMemberStats.userId === currentUserId && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                        You
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {selectedMemberStats.currentStatus === 'focusing' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                        Focusing Now
+                      </span>
+                    ) : selectedMemberStats.currentStatus === 'break' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-sky-400 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-sky-400" />
+                        On Break
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-neutral-600" />
+                        Idle
+                      </span>
+                    )}
+                    <span className="text-[10px] text-neutral-500 font-mono">
+                      · Joined {new Date(selectedMemberStats.joinedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedMemberStats(null)}
+                className="p-1 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white cursor-pointer transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Privacy Check: If user turned off stats sharing */}
+            {selectedMemberStats.shareStats === false ? (
+              <div className="p-6 rounded-xl bg-neutral-950/70 border border-neutral-800 text-center space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-neutral-800 text-neutral-400 flex items-center justify-center mx-auto">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-neutral-200">Stats Kept Private</h4>
+                  <p className="text-xs text-neutral-400 mt-1 max-w-xs mx-auto">
+                    This teammate has chosen to keep their focus analytics private. Their daily rank on the party leaderboard remains active.
+                  </p>
+                </div>
+                <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-around text-xs font-mono">
+                  <div>
+                    <span className="text-neutral-500 block text-[10px]">TODAY</span>
+                    <span className="text-amber-400 font-bold">
+                      {formatMinutesHuman(selectedMemberStats.dailyFocusMinutes || 0)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500 block text-[10px]">SESSIONS</span>
+                    <span className="text-neutral-300 font-bold">
+                      {selectedMemberStats.completedSessions}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Public Stats Breakdown */
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-2.5">
+                  {/* Today's Focus */}
+                  <div className="p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-800/90">
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-amber-400 font-semibold mb-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Today&apos;s Focus</span>
+                    </div>
+                    <div className="text-lg font-mono font-bold text-white">
+                      {formatMinutesHuman(selectedMemberStats.dailyFocusMinutes || 0)}
+                    </div>
+                    <span className="text-[10px] text-neutral-500">Resets daily at 12:00 AM</span>
+                  </div>
+
+                  {/* Previously Focused Time (Specifically requested!) */}
+                  <div className="p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-800/90">
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-sky-400 font-semibold mb-1">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>Previously Focused</span>
+                    </div>
+                    <div className="text-lg font-mono font-bold text-white">
+                      {formatMinutesHuman(
+                        selectedMemberStats.statsSnapshot?.previousFocusMinutes ??
+                          Math.max(0, (selectedMemberStats.totalFocusMinutes || 0) - (selectedMemberStats.dailyFocusMinutes || 0))
+                      )}
+                    </div>
+                    <span className="text-[10px] text-neutral-500">All sessions prior to today</span>
+                  </div>
+
+                  {/* Current Streak */}
+                  <div className="p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-800/90">
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-orange-400 font-semibold mb-1">
+                      <Flame className="w-3.5 h-3.5" />
+                      <span>Current Streak</span>
+                    </div>
+                    <div className="text-lg font-mono font-bold text-white">
+                      {selectedMemberStats.statsSnapshot?.currentStreak ?? (selectedMemberStats.completedSessions > 0 ? 1 : 0)} days
+                    </div>
+                    <span className="text-[10px] text-neutral-500">Consecutive active days</span>
+                  </div>
+
+                  {/* All-Time Total */}
+                  <div className="p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-800/90">
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-semibold mb-1">
+                      <Trophy className="w-3.5 h-3.5" />
+                      <span>All-Time Total</span>
+                    </div>
+                    <div className="text-lg font-mono font-bold text-white">
+                      {formatMinutesHuman(
+                        selectedMemberStats.statsSnapshot?.allTimeFocusMinutes ?? selectedMemberStats.totalFocusMinutes
+                      )}
+                    </div>
+                    <span className="text-[10px] text-neutral-500">
+                      {selectedMemberStats.completedSessions} total sessions
+                    </span>
+                  </div>
+                </div>
+
+                {/* Secondary Metrics Summary Bar */}
+                <div className="p-3 rounded-xl bg-neutral-950/50 border border-neutral-800/60 flex items-center justify-around text-xs font-mono">
+                  <div className="text-center">
+                    <span className="text-neutral-500 block text-[10px]">THIS WEEK</span>
+                    <span className="text-neutral-200 font-semibold">
+                      {formatMinutesHuman(selectedMemberStats.statsSnapshot?.weeklyFocusMinutes ?? selectedMemberStats.totalFocusMinutes)}
+                    </span>
+                  </div>
+                  <div className="h-6 w-px bg-neutral-800" />
+                  <div className="text-center">
+                    <span className="text-neutral-500 block text-[10px]">TASKS DONE</span>
+                    <span className="text-neutral-200 font-semibold">
+                      {selectedMemberStats.statsSnapshot?.tasksCompleted ?? 0}
+                    </span>
+                  </div>
+                  <div className="h-6 w-px bg-neutral-800" />
+                  <div className="text-center">
+                    <span className="text-neutral-500 block text-[10px]">TODAY ROUNDS</span>
+                    <span className="text-neutral-200 font-semibold">
+                      {selectedMemberStats.statsSnapshot?.completedPomodoros ?? selectedMemberStats.completedSessions}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setSelectedMemberStats(null)}
+              className="w-full py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Close Profile
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Focus Guard Dialog: Chat Locked during active focus */}
       {showFocusLockAlert && (

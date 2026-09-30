@@ -7,6 +7,7 @@ import {
   SoundAlertChoice,
   AmbientThemePreset,
   AmbientThemeId,
+  ClockStyle,
 } from '../types';
 
 export const AMBIENT_THEMES: AmbientThemePreset[] = [
@@ -313,6 +314,25 @@ export const FONT_OPTIONS: { id: ClockFontFamily; name: string; sample: string; 
   { id: 'bebas', name: 'Bebas Bold Flip', sample: '10:45:22', cssFamily: "'Bebas Neue', sans-serif" },
 ];
 
+/**
+ * Optical scale normalization factors so every clock font renders at the exact same visual height & presence
+ */
+export const FONT_SCALE_NORMALIZATION: Record<ClockFontFamily, number> = {
+  outfit: 1.0,
+  jetbrains: 0.95,
+  orbitron: 0.94,
+  'space-grotesk': 0.98,
+  audiowide: 0.92,
+  vt323: 1.25,
+  cinzel: 0.96,
+  playfair: 0.95,
+  montserrat: 0.98,
+  poppins: 0.98,
+  courier: 0.95,
+  'share-tech': 1.05,
+  bebas: 1.15,
+};
+
 export const SOUND_ALERT_OPTIONS: { id: SoundAlertChoice; name: string; desc: string }[] = [
   { id: 'zen-bell', name: 'Zen Meditation Bell', desc: 'Soothing Tibetan singing bowl resonance' },
   { id: 'gentle-marimba', name: 'Gentle Marimba', desc: 'Warm wooden acoustic chime sequence' },
@@ -357,7 +377,116 @@ export const DEFAULT_CLOCK_SETTINGS: ClockSettings = {
   introEffect: 'chronos',
   introSound: true,
   shareStatsWithParty: true,
+
+  // Clock Style Design
+  clockStyle: 'modern',
+  clockFaceTransparency: 0,
+
+  // Freeform Layout & Scaling
+  customLayoutEnabled: false,
+  clockPosition: { x: 0, y: 0 },
+  clockScale: 1,
+  clockScaleX: 1,
+  clockScaleY: 1,
+  clockRotation: 0,
+
+  // Individual Element Adjustments
+  dateLayout: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  mantraLayout: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  ampmLayout: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+
+  // Color Mixes & Gradients & Matched Background
+  colorMode: 'solid',
+  gradientPresetId: 'sunset-blaze',
+  customGradientStart: '#f59e0b',
+  customGradientEnd: '#f43f5e',
+  customGradientAngle: 135,
+  matchedBackground: 'off',
+
+  // Widgets
+  showBatteryWidget: true,
+  batteryWidgetStyle: 'pill',
+  batteryWidgetPosition: { x: 0, y: 0 },
+  batteryWidgetScale: 1,
+
+  showStopwatchWidget: false,
+  stopwatchWidgetStyle: 'compact',
+  stopwatchWidgetPosition: { x: 0, y: 0 },
+  stopwatchWidgetScale: 1,
+
+  showWeatherWidget: false,
+  weatherWidgetStyle: 'pill',
+  weatherWidgetPosition: { x: 0, y: 0 },
+  weatherWidgetScale: 1,
+  weatherTempUnit: 'f',
+  weatherCity: 'San Francisco',
+
+  showFocusGoalWidget: false,
+  focusGoalWidgetPosition: { x: 0, y: 0 },
+  focusGoalWidgetScale: 1,
+  focusDailyTarget: 4,
+
+  showQuickNoteWidget: false,
+  quickNoteWidgetPosition: { x: 0, y: 0 },
+  quickNoteWidgetScale: 1,
+  quickNoteText: 'Deep Work Mode • Stay Hydrated 💧',
+
+  showPomodoroWidget: false,
+  pomodoroWidgetPosition: { x: 0, y: 0 },
+  pomodoroWidgetScale: 1,
+
+  widgetTheme: 'glass',
 };
+
+export interface ClockStyleOption {
+  id: ClockStyle;
+  name: string;
+  tagline: string;
+  category: 'digital' | 'mechanical' | 'analog' | 'futuristic';
+  badge?: string;
+}
+
+export const CLOCK_STYLE_OPTIONS: ClockStyleOption[] = [
+  {
+    id: 'modern',
+    name: 'Modern Minimal',
+    tagline: 'Clean typographic digital standby display with ambient glow & custom gradients',
+    category: 'digital',
+    badge: 'Popular',
+  },
+  {
+    id: 'flip',
+    name: 'Retro Flip Clock',
+    tagline: '3D split-flap mechanical flip cards with center crease & realistic pivot pins',
+    category: 'mechanical',
+    badge: 'Vintage',
+  },
+  {
+    id: 'analog',
+    name: 'Precision Analog',
+    tagline: 'Luxury Swiss-inspired analog chronograph with smooth sweeping second hand',
+    category: 'analog',
+  },
+  {
+    id: 'seven-segment',
+    name: '7-Segment LED',
+    tagline: 'Retro futuristic digital alarm LED tube display with authentic illuminated segments',
+    category: 'digital',
+  },
+  {
+    id: 'neon-cyber',
+    name: 'Cyberpunk HUD',
+    tagline: 'Sci-fi telemetry terminal with neon brackets, scanner grid, and cyber HUD',
+    category: 'futuristic',
+    badge: 'Sci-Fi',
+  },
+  {
+    id: 'arc-radial',
+    name: 'Radial Arc Gauge',
+    tagline: 'Concentric orbital circular arcs tracking hours, minutes, and seconds',
+    category: 'futuristic',
+  },
+];
 
 export const POMODORO_THEME_PRESETS: PomodoroThemePreset[] = [
   {
@@ -511,6 +640,7 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
   circleSize: 320,
   timerFontSize: 0,
   verticalOffset: 0,
+  presetTimerDefault: 25,
   themeId: 'classic-tomato',
   customBg: '',
   customTextColor: '',

@@ -32,6 +32,19 @@ import {
   Trash2,
   RefreshCw,
   Wand2,
+  Move,
+  Battery,
+  Clock,
+  Gauge,
+  Hash,
+  Cpu,
+  Compass,
+  Maximize2,
+  CloudSun,
+  Target,
+  StickyNote,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   ClockSettings,
@@ -41,6 +54,11 @@ import {
   SoundAlertChoice,
   AmbientThemeId,
   WallpaperMode,
+  ClockStyle,
+  ClockColorMode,
+  BatteryWidgetStyle,
+  StopwatchWidgetStyle,
+  WidgetTheme,
 } from '../types';
 import {
   THEME_PRESETS,
@@ -49,6 +67,7 @@ import {
   SAMPLE_QUOTES,
   POMODORO_THEME_PRESETS,
   AMBIENT_THEMES,
+  CLOCK_STYLE_OPTIONS,
   getResolvedPomodoroTheme,
   getMaxPomodoroFontSize,
 } from '../utils/constants';
@@ -58,6 +77,12 @@ import {
   playTickSound,
 } from '../utils/audio';
 import { AmbientBackground } from './AmbientBackground';
+import { GRADIENT_PRESETS, getClockDigitTextStyle, getMatchedBackgroundStyle, getClockResolvedColors } from '../utils/gradientPresets';
+import { FlipClock } from './clock-styles/FlipClock';
+import { AnalogClock } from './clock-styles/AnalogClock';
+import { SevenSegmentClock } from './clock-styles/SevenSegmentClock';
+import { CyberpunkClock } from './clock-styles/CyberpunkClock';
+import { RadialArcClock } from './clock-styles/RadialArcClock';
 import {
   saveWallpaperItem,
   getWallpaperItem,
@@ -84,6 +109,34 @@ interface SettingsModalProps {
 }
 
 type TabKey = 'clock' | 'pomodoro' | 'general';
+
+/**
+ * Dynamic scaling utility for the live preview container in SettingsModal:
+ * Detects when a large analog clock (or large radial gauge/oversized digit style) is selected
+ * and automatically applies a 50% scale transformation, ensuring the settings controls remain accessible.
+ */
+export function getLivePreviewDynamicScale(settings: ClockSettings, activeTab: string) {
+  const isLargeAnalog =
+    activeTab === 'clock' &&
+    (settings.clockStyle === 'analog' ||
+      settings.clockStyle === 'arc-radial' ||
+      settings.clockStyle === 'neon-cyber' ||
+      settings.digitSize === 'huge' ||
+      settings.digitSize === 'fill');
+
+  // When large analog clock is selected, automatically apply 50% scale transformation
+  const scaleRatio = isLargeAnalog ? 0.50 : 0.65;
+
+  return {
+    isLargeAnalog,
+    scaleTransform: `scale(${scaleRatio})`,
+    scaleRatio,
+    containerHeightClass: isLargeAnalog
+      ? 'h-[110px] sm:h-[120px] min-h-[100px] max-h-[125px]'
+      : 'h-[90px] sm:h-[98px] min-h-[85px] max-h-[104px]',
+    badgeInfo: isLargeAnalog ? '50% Auto-Scaled Preview' : null,
+  };
+}
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -132,6 +185,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [segmentSensitivity, setSegmentSensitivity] = useState<'low' | 'balanced' | 'high'>('balanced');
   const [previewWallpaperUrl, setPreviewWallpaperUrl] = useState<string | null>(null);
   const [isDraggingPhoto, setIsDraggingPhoto] = useState<boolean>(false);
+  const [isPreviewCollapsed, setIsPreviewCollapsed] = useState<boolean>(false);
 
   const fileInputSingleRef = useRef<HTMLInputElement | null>(null);
   const fileInputSlideshowRef = useRef<HTMLInputElement | null>(null);
@@ -486,17 +540,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     ? '#0f111a'
     : '#f7f5f0';
 
-  const activeTextColor = isAmbientActive
-    ? activeAmbientTheme.textColor
-    : clockSettings.themeId === 'custom' && clockSettings.customTextColor
-    ? clockSettings.customTextColor
-    : currentTheme.textColor;
+  const resolvedColors = getClockResolvedColors(
+    clockSettings,
+    isAmbientActive ? activeAmbientTheme.textColor : currentTheme.textColor,
+    isAmbientActive ? activeAmbientTheme.accentColor : currentTheme.accentColor
+  );
 
-  const activeAccentColor = isAmbientActive
-    ? activeAmbientTheme.accentColor
-    : clockSettings.themeId === 'custom' && clockSettings.customAccentColor
-    ? clockSettings.customAccentColor
-    : currentTheme.accentColor;
+  const activeTextColor = resolvedColors.textColor;
+  const activeAccentColor = resolvedColors.accentColor;
 
   // Handle custom audio file uploads
   const handleAudioUpload = (
@@ -536,6 +587,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   if (!isOpen) return null;
+
+  const matchedBg = getMatchedBackgroundStyle(clockSettings, activeTextColor);
+  const previewTime = new Date();
+  const previewDynamicScale = getLivePreviewDynamicScale(clockSettings, activeTab);
 
   return (
     <div
@@ -638,115 +693,202 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* LIVE REAL-TIME PREVIEW CONTAINER */}
-        <div className="px-6 pt-4 pb-3 bg-neutral-950/60 border-b border-neutral-800/80">
-          <div className="flex items-center justify-between mb-2">
+        <div className="px-6 pt-3 pb-2.5 bg-neutral-950/60 border-b border-neutral-800/80">
+          <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] font-mono tracking-wider text-amber-400 uppercase flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Live Visual Preview (Updates Instantly)</span>
+              <span>Live Visual Preview</span>
             </span>
-            <span className="text-[10px] text-neutral-400 font-mono">
-              {activeTab === 'clock'
-                ? isAmbientActive
-                  ? `Ambient: ${activeAmbientTheme.name} • Font: ${selectedFont.name}`
-                  : `Theme: ${currentTheme.name} • Font: ${selectedFont.name}`
-                : activeTab === 'pomodoro'
-                ? `Theme: ${POMODORO_THEME_PRESETS.find((p) => p.id === (pomodoroSettings.themeId || 'classic-tomato'))?.name || 'Custom'} • Font: ${selectedPomoFont.name}`
-                : `Profile: ${userName || 'Friend'}`}
-            </span>
+            <div className="flex items-center gap-2">
+              {previewDynamicScale.badgeInfo && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono font-medium border border-amber-500/30">
+                  {previewDynamicScale.badgeInfo}
+                </span>
+              )}
+              <span className="text-[10px] text-neutral-400 font-mono hidden sm:inline truncate max-w-xs">
+                {activeTab === 'clock'
+                  ? `${CLOCK_STYLE_OPTIONS.find((s) => s.id === (clockSettings.clockStyle || 'modern'))?.name || 'Modern'} • ${selectedFont.name}`
+                  : activeTab === 'pomodoro'
+                  ? `${POMODORO_THEME_PRESETS.find((p) => p.id === (pomodoroSettings.themeId || 'classic-tomato'))?.name || 'Custom'}`
+                  : `${userName || 'Friend'}`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsPreviewCollapsed(!isPreviewCollapsed)}
+                className="flex items-center gap-1 text-[10px] text-amber-300 hover:text-amber-200 font-mono px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 transition-colors cursor-pointer"
+                title={isPreviewCollapsed ? 'Expand Preview' : 'Minimize Preview to view settings'}
+              >
+                {isPreviewCollapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                <span>{isPreviewCollapsed ? 'Show Preview' : 'Compact View'}</span>
+              </button>
+            </div>
           </div>
 
-          <div
-            id="settings-live-preview-box"
-            className="w-full rounded-2xl p-4 transition-all duration-300 border border-neutral-700/80 shadow-inner flex flex-col items-center justify-center text-center overflow-hidden min-h-[110px] relative"
-            style={{
-              backgroundColor: activeTab === 'pomodoro' ? resolvedPomoTheme.bg : isAmbientActive ? undefined : activeBg,
-              backgroundImage:
-                activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme')
-                  ? activeAmbientTheme.bgGradient
-                  : undefined,
-              color: activeTab === 'pomodoro' ? resolvedPomoTheme.textColor : activeTextColor,
-              filter: activeTab === 'clock' ? `brightness(${clockSettings.brightness}%)` : 'none',
-            }}
-          >
-            {/* Custom Photo Wallpaper Preview Image */}
-            {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
-              <img
-                src={previewWallpaperUrl}
-                alt="Wallpaper preview"
-                className="absolute inset-0 w-full h-full object-cover pointer-events-none rounded-2xl z-0"
-                style={{
-                  filter: clockSettings.wallpaperBlur ? `blur(${clockSettings.wallpaperBlur}px)` : undefined,
-                }}
-              />
-            )}
-
-            {/* Wallpaper Dimmer Overlay for Preview */}
-            {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
-              <div
-                className="absolute inset-0 bg-black pointer-events-none rounded-2xl z-[1]"
-                style={{ opacity: (clockSettings.wallpaperOpacity ?? 25) / 100 }}
-              />
-            )}
-
-            {/* Ambient Background layer in preview */}
-            {activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme') && (
-              <AmbientBackground
-                ambientTheme={clockSettings.ambientTheme}
-                particles={clockSettings.ambientParticles !== false}
-                className="rounded-2xl"
-              />
-            )}
-            {activeTab === 'pomodoro' && isPomoAmbientActive && (
-              <AmbientBackground
-                ambientTheme={pomodoroSettings.ambientTheme}
-                particles={pomodoroSettings.ambientParticles !== false}
-                pomodoroPhase={previewPomoPhase}
-                syncPhase={pomodoroSettings.ambientPhaseSync !== false}
-                className="rounded-2xl"
-              />
-            )}
-
-            {activeTab === 'clock' ? (
-              <div className="relative z-10 w-full flex flex-col items-center">
-                {(clockSettings.showDayOfWeek || clockSettings.showDate) && (
-                  <div className="text-[11px] tracking-wider uppercase opacity-75 mb-1 font-sans">
-                    {clockSettings.showDayOfWeek && <span>Thursday </span>}
-                    {clockSettings.showDayOfWeek && clockSettings.showDate && <span>• </span>}
-                    {clockSettings.showDate && <span>September 10, 2026</span>}
-                  </div>
-                )}
-                <div
-                  className="text-3xl sm:text-4xl tracking-wider flex items-baseline justify-center transition-all duration-200"
+          {!isPreviewCollapsed && (
+            <div
+              id="settings-live-preview-box"
+              className={`w-full rounded-2xl p-2 transition-all duration-300 border border-neutral-700/80 shadow-inner flex flex-col items-center justify-center text-center overflow-hidden ${previewDynamicScale.containerHeightClass} relative`}
+              style={{
+                backgroundColor:
+                  activeTab === 'pomodoro'
+                    ? resolvedPomoTheme.bg
+                    : matchedBg?.backgroundColor
+                    ? matchedBg.backgroundColor
+                    : isAmbientActive
+                    ? undefined
+                    : activeBg,
+                backgroundImage:
+                  activeTab === 'pomodoro'
+                    ? undefined
+                    : matchedBg?.backgroundImage
+                    ? matchedBg.backgroundImage
+                    : activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme')
+                    ? activeAmbientTheme.bgGradient
+                    : undefined,
+                color: activeTab === 'pomodoro' ? resolvedPomoTheme.textColor : activeTextColor,
+                filter: activeTab === 'clock' ? `brightness(${clockSettings.brightness}%)` : 'none',
+              }}
+            >
+              {/* Custom Photo Wallpaper Preview Image */}
+              {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
+                <img
+                  src={previewWallpaperUrl}
+                  alt="Wallpaper preview"
+                  className="absolute inset-0 w-full h-full object-cover pointer-events-none rounded-2xl z-0"
                   style={{
-                    fontFamily: selectedFont.cssFamily,
-                    color: activeTextColor,
-                    textShadow: isAmbientActive
-                      ? `0 0 20px ${activeAmbientTheme.glowColor}`
-                      : 'none',
+                    filter: clockSettings.wallpaperBlur ? `blur(${clockSettings.wallpaperBlur}px)` : undefined,
                   }}
-                >
-                  <span>10:45</span>
-                  {clockSettings.showSeconds && (
-                    <span className="text-xl opacity-75 ml-1" style={{ color: activeAccentColor }}>
-                      :22
-                    </span>
-                  )}
-                  {clockSettings.showAmPm && clockSettings.timeFormat === '12h' && (
-                    <span
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-current ml-2"
-                      style={{ color: activeAccentColor }}
-                    >
-                      AM
-                    </span>
-                  )}
-                </div>
-                {clockSettings.showQuote && clockSettings.quoteText && (
-                  <div className="text-[11px] opacity-75 italic mt-1 max-w-sm truncate font-sans">
-                    &ldquo;{clockSettings.quoteText}&rdquo;
+                />
+              )}
+
+              {/* Wallpaper Dimmer Overlay for Preview */}
+              {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
+                <div
+                  className="absolute inset-0 bg-black pointer-events-none rounded-2xl z-[1]"
+                  style={{ opacity: (clockSettings.wallpaperOpacity ?? 25) / 100 }}
+                />
+              )}
+
+              {/* Ambient Background layer in preview */}
+              {activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme') && (
+                <AmbientBackground
+                  ambientTheme={clockSettings.ambientTheme}
+                  particles={clockSettings.ambientParticles !== false}
+                  className="rounded-2xl"
+                />
+              )}
+              {activeTab === 'pomodoro' && isPomoAmbientActive && (
+                <AmbientBackground
+                  ambientTheme={pomodoroSettings.ambientTheme}
+                  particles={pomodoroSettings.ambientParticles !== false}
+                  pomodoroPhase={previewPomoPhase}
+                  syncPhase={pomodoroSettings.ambientPhaseSync !== false}
+                  className="rounded-2xl"
+                />
+              )}
+
+              {activeTab === 'clock' ? (
+                <div className="relative z-10 w-full flex flex-col items-center justify-center">
+                  {/* Clock Style Live Preview Renderer - Auto 50% scale transformation for large analog clocks */}
+                  <div
+                    className="transform origin-center max-w-full flex items-center justify-center transition-all duration-200 my-0"
+                    style={{
+                      transform: previewDynamicScale.scaleTransform,
+                      transformOrigin: 'center center',
+                    }}
+                  >
+                    {clockSettings.clockStyle === 'flip' ? (
+                      <FlipClock
+                        hoursStr="10"
+                        minutesStr="45"
+                        secondsStr="22"
+                        ampm="AM"
+                        settings={clockSettings}
+                        resolvedTextColor={activeTextColor}
+                        resolvedAccentColor={activeAccentColor}
+                        isLight={!isDarkMode && !currentTheme.isDark}
+                      />
+                    ) : clockSettings.clockStyle === 'analog' ? (
+                      <AnalogClock
+                        date={previewTime}
+                        ampm="AM"
+                        settings={clockSettings}
+                        resolvedTextColor={activeTextColor}
+                        resolvedAccentColor={activeAccentColor}
+                        isLight={!isDarkMode && !currentTheme.isDark}
+                      />
+                    ) : clockSettings.clockStyle === 'seven-segment' ? (
+                      <SevenSegmentClock
+                        hoursStr="10"
+                        minutesStr="45"
+                        secondsStr="22"
+                        ampm="AM"
+                        settings={clockSettings}
+                        resolvedAccentColor={activeAccentColor}
+                      />
+                    ) : clockSettings.clockStyle === 'neon-cyber' ? (
+                      <CyberpunkClock
+                        hoursStr="10"
+                        minutesStr="45"
+                        secondsStr="22"
+                        ampm="AM"
+                        settings={clockSettings}
+                        resolvedAccentColor={activeAccentColor}
+                        digitTextStyle={getClockDigitTextStyle(clockSettings, activeTextColor)}
+                      />
+                    ) : clockSettings.clockStyle === 'arc-radial' ? (
+                      <RadialArcClock
+                        date={previewTime}
+                        hoursStr="10"
+                        minutesStr="45"
+                        secondsStr="22"
+                        ampm="AM"
+                        settings={clockSettings}
+                        resolvedTextColor={activeTextColor}
+                        resolvedAccentColor={activeAccentColor}
+                        isLight={!isDarkMode && !currentTheme.isDark}
+                      />
+                    ) : (
+                      /* Modern Typographic Clock (Default) with Text Gradients */
+                      <div
+                        className="text-3xl sm:text-4xl tracking-wider flex items-baseline justify-center transition-all duration-200"
+                        style={{
+                          fontFamily: selectedFont.cssFamily,
+                          ...getClockDigitTextStyle(clockSettings, activeTextColor),
+                          textShadow:
+                            clockSettings.colorMode && clockSettings.colorMode !== 'solid'
+                              ? 'none'
+                              : isAmbientActive
+                              ? `0 0 20px ${activeAmbientTheme.glowColor}`
+                              : 'none',
+                        }}
+                      >
+                        <span>10:45</span>
+                        {clockSettings.showSeconds && (
+                          <span
+                            className="text-xl opacity-75 ml-1"
+                            style={
+                              clockSettings.colorMode && clockSettings.colorMode !== 'solid'
+                                ? getClockDigitTextStyle(clockSettings, activeAccentColor)
+                                : { color: activeAccentColor }
+                            }
+                          >
+                            :22
+                          </span>
+                        )}
+                        {clockSettings.showAmPm && clockSettings.timeFormat === '12h' && (
+                          <span
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-current ml-2"
+                            style={{ color: activeAccentColor }}
+                          >
+                            AM
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ) : activeTab === 'pomodoro' ? (
+                </div>
+              ) : activeTab === 'pomodoro' ? (
               <div className="w-full flex flex-col items-center gap-3">
                 {/* Interactive Phase Preview Switcher */}
                 <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/25 border border-white/10">
@@ -914,6 +1056,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Tab Content Body */}
@@ -921,6 +1064,547 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 1: CLOCK & APPEARANCE */}
           {activeTab === 'clock' && (
             <div className="space-y-6">
+              {/* 1. CLOCK DESIGNS & STYLES (Requirement 1) */}
+              <div className="space-y-4 p-4 rounded-2xl bg-neutral-950/80 border border-amber-500/25 shadow-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+                  <div>
+                    <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-400" />
+                      <span>Clock Designs & Visual Styles</span>
+                    </label>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Choose between 6 distinct physical, mechanical, and futuristic clock styles.
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 self-start sm:self-auto">
+                    {CLOCK_STYLE_OPTIONS.find((s) => s.id === (clockSettings.clockStyle || 'modern'))?.name || 'Modern Minimal'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {CLOCK_STYLE_OPTIONS.map((style) => {
+                    const isSelected = (clockSettings.clockStyle || 'modern') === style.id;
+                    return (
+                      <button
+                        key={style.id}
+                        id={`clock-style-${style.id}`}
+                        type="button"
+                        onClick={() => onUpdateClockSettings({ clockStyle: style.id })}
+                        className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between min-h-[96px] cursor-pointer group ${
+                          isSelected
+                            ? 'border-amber-400 bg-amber-500/15 ring-2 ring-amber-400/30 shadow-md'
+                            : 'border-neutral-800 hover:border-neutral-700 bg-neutral-900/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-neutral-100 group-hover:text-amber-300 transition-colors">
+                              {style.name}
+                            </span>
+                            {style.badge && (
+                              <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                {style.badge}
+                              </span>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <span className="w-4 h-4 rounded-full bg-amber-400 text-neutral-950 flex items-center justify-center shrink-0">
+                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                            </span>
+                          )}
+                        </div>
+
+                        <span className="text-[11px] text-neutral-400 line-clamp-2 leading-relaxed">
+                          {style.tagline}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. CLOCK LAYOUT, DRAG SCALING & FREE POSITIONING (Requirements 2 & 3) */}
+              <div className="p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+                  <div>
+                    <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
+                      <Move className="w-4 h-4 text-amber-400" />
+                      <span>Clock Layout, Scaling & Free Positioning</span>
+                    </label>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Drag freely across your desk screen or pull corners to resize and crop your clock.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateClockSettings({ customLayoutEnabled: true });
+                      onClose();
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs shadow-lg self-start sm:self-auto cursor-pointer transition-all hover:scale-105 active:scale-95"
+                    title="Unlock layout to drag and resize elements directly on your screen"
+                  >
+                    <Move className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Enter Freeform Layout Editor</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Clock Scale Size Slider & Presets */}
+                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-neutral-300">Clock Scale Size</span>
+                      <span className="font-mono text-xs text-amber-400 font-bold">
+                        {Math.round((clockSettings.clockScale ?? 1) * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="40"
+                      max="250"
+                      step="5"
+                      value={Math.round((clockSettings.clockScale ?? 1) * 100)}
+                      onChange={(e) =>
+                        onUpdateClockSettings({ clockScale: +(Number(e.target.value) / 100).toFixed(2) })
+                      }
+                      className="w-full accent-amber-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+                    />
+                    <div className="flex items-center justify-between gap-1 pt-1">
+                      {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => onUpdateClockSettings({ clockScale: preset })}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer ${
+                            Math.abs((clockSettings.clockScale ?? 1) - preset) < 0.05
+                              ? 'bg-amber-500 text-neutral-950 font-bold'
+                              : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          {preset}x
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Lateral & Vertical Sizing + Rotation */}
+                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-neutral-300">Dimensions & Rotation</span>
+                      <span className="text-[10px] font-mono text-neutral-400">
+                        W: {Math.round((clockSettings.clockScaleX ?? 1) * 100)}% • H: {Math.round((clockSettings.clockScaleY ?? 1) * 100)}% • {clockSettings.clockRotation ?? 0}°
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-[11px]">
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block mb-1">Width (X)</span>
+                        <input
+                          type="range"
+                          min="40"
+                          max="220"
+                          step="5"
+                          value={Math.round((clockSettings.clockScaleX ?? 1) * 100)}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ clockScaleX: +(Number(e.target.value) / 100).toFixed(2) })
+                          }
+                          className="w-full accent-sky-400 cursor-pointer h-1 bg-neutral-800 rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block mb-1">Height (Y)</span>
+                        <input
+                          type="range"
+                          min="40"
+                          max="220"
+                          step="5"
+                          value={Math.round((clockSettings.clockScaleY ?? 1) * 100)}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ clockScaleY: +(Number(e.target.value) / 100).toFixed(2) })
+                          }
+                          className="w-full accent-emerald-400 cursor-pointer h-1 bg-neutral-800 rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block mb-1">Rotate</span>
+                        <input
+                          type="range"
+                          min="-180"
+                          max="180"
+                          step="5"
+                          value={clockSettings.clockRotation ?? 0}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ clockRotation: Number(e.target.value) })
+                          }
+                          className="w-full accent-purple-400 cursor-pointer h-1 bg-neutral-800 rounded-lg"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2 border-t border-neutral-800">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateClockSettings({
+                            clockPosition: { x: 0, y: 0 },
+                            clockScale: 1,
+                            clockScaleX: 1,
+                            clockScaleY: 1,
+                            clockRotation: 0,
+                          })
+                        }
+                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium cursor-pointer transition-colors"
+                      >
+                        <RotateCcw className="w-3 h-3 text-amber-400" />
+                        <span>Center Clock</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateClockSettings({
+                            clockPosition: { x: 0, y: 0 },
+                            clockScale: 1,
+                            clockScaleX: 1,
+                            clockScaleY: 1,
+                            clockRotation: 0,
+                            batteryWidgetPosition: { x: 0, y: 0 },
+                            stopwatchWidgetPosition: { x: 0, y: 0 },
+                            weatherWidgetPosition: { x: 0, y: 0 },
+                            focusGoalWidgetPosition: { x: 0, y: 0 },
+                            quickNoteWidgetPosition: { x: 0, y: 0 },
+                          })
+                        }
+                        className="py-1.5 px-3 rounded-lg bg-neutral-800/60 hover:bg-neutral-800 text-neutral-400 text-xs cursor-pointer transition-colors"
+                      >
+                        Reset All
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. DESKTOP WIDGETS SECTION (Requirement 5) */}
+              <div className="p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+                  <div>
+                    <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
+                      <Battery className="w-4 h-4 text-emerald-400" />
+                      <span>Standby Desktop Widgets</span>
+                    </label>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Enable desktop battery monitor and mini stopwatch timer, and choose their visual design.
+                    </p>
+                  </div>
+
+                  {/* Widget Theme Selector */}
+                  <div className="flex items-center gap-1 bg-neutral-900 p-1 rounded-xl border border-neutral-800 self-start sm:self-auto">
+                    <span className="text-[10px] text-neutral-400 px-1 font-mono uppercase">Theme:</span>
+                    {(['glass', 'solid', 'glow', 'minimal'] as WidgetTheme[]).map((theme) => (
+                      <button
+                        key={theme}
+                        type="button"
+                        onClick={() => onUpdateClockSettings({ widgetTheme: theme })}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono capitalize transition-all cursor-pointer ${
+                          (clockSettings.widgetTheme || 'glass') === theme
+                            ? 'bg-amber-500 text-neutral-950 font-bold'
+                            : 'text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {theme}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Battery Widget */}
+                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BatteryCharging className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-neutral-200">Battery Widget</span>
+                      </div>
+                      <button
+                        type="button"
+                        id="toggle-battery-widget-btn"
+                        onClick={() =>
+                          onUpdateClockSettings({
+                            showBatteryWidget: !clockSettings.showBatteryWidget,
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase cursor-pointer transition-all ${
+                          clockSettings.showBatteryWidget
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
+                        }`}
+                      >
+                        {clockSettings.showBatteryWidget ? 'Enabled' : 'Disabled'}
+                      </button>
+                    </div>
+
+                    {clockSettings.showBatteryWidget && (
+                      <div className="space-y-2 pt-2 border-t border-neutral-800">
+                        <span className="text-[11px] text-neutral-400 block">Battery Widget Style:</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { id: 'pill', label: 'Pill Capsule', desc: 'Sleek level bar' },
+                            { id: 'gauge', label: 'Dial Gauge', desc: 'Circular meter' },
+                            { id: 'minimal', label: 'Minimal Glyph', desc: 'Compact dot' },
+                            { id: 'cyber', label: 'Cyber Cell', desc: 'Segmented matrix' },
+                          ].map((bStyle) => {
+                            const isCurrent = (clockSettings.batteryWidgetStyle || 'pill') === bStyle.id;
+                            return (
+                              <button
+                                key={bStyle.id}
+                                type="button"
+                                onClick={() =>
+                                  onUpdateClockSettings({
+                                    batteryWidgetStyle: bStyle.id as BatteryWidgetStyle,
+                                  })
+                                }
+                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                                  isCurrent
+                                    ? 'border-emerald-400 bg-emerald-500/15 text-emerald-300 font-semibold'
+                                    : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/60 text-neutral-300'
+                                }`}
+                              >
+                                <span className="text-xs block">{bStyle.label}</span>
+                                <span className="text-[10px] text-neutral-400 block">{bStyle.desc}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Stopwatch Widget */}
+                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Timer className="w-4 h-4 text-sky-400" />
+                        <span className="text-xs font-bold text-neutral-200">Mini Stopwatch</span>
+                      </div>
+                      <button
+                        type="button"
+                        id="toggle-stopwatch-widget-btn"
+                        onClick={() =>
+                          onUpdateClockSettings({
+                            showStopwatchWidget: !clockSettings.showStopwatchWidget,
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase cursor-pointer transition-all ${
+                          clockSettings.showStopwatchWidget
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                            : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
+                        }`}
+                      >
+                        {clockSettings.showStopwatchWidget ? 'Enabled' : 'Disabled'}
+                      </button>
+                    </div>
+
+                    {clockSettings.showStopwatchWidget && (
+                      <div className="space-y-2 pt-2 border-t border-neutral-800">
+                        <span className="text-[11px] text-neutral-400 block">Stopwatch Style:</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { id: 'compact', label: 'Inline Pill', desc: 'Compact ticker' },
+                            { id: 'ring', label: 'Progress Ring', desc: 'Radial runner' },
+                            { id: 'card', label: 'Glass Card', desc: 'Split lap timer' },
+                            { id: 'cyber', label: 'Cyber HUD', desc: 'Sci-fi precision' },
+                          ].map((swStyle) => {
+                            const isCurrent = (clockSettings.stopwatchWidgetStyle || 'compact') === swStyle.id;
+                            return (
+                              <button
+                                key={swStyle.id}
+                                type="button"
+                                onClick={() =>
+                                  onUpdateClockSettings({
+                                    stopwatchWidgetStyle: swStyle.id as StopwatchWidgetStyle,
+                                  })
+                                }
+                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                                  isCurrent
+                                    ? 'border-sky-400 bg-sky-500/15 text-sky-300 font-semibold'
+                                    : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/60 text-neutral-300'
+                                }`}
+                              >
+                                <span className="text-xs block">{swStyle.label}</span>
+                                <span className="text-[10px] text-neutral-400 block">{swStyle.desc}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Weather Widget */}
+                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CloudSun className="w-4 h-4 text-amber-400" />
+                        <span className="text-xs font-bold text-neutral-200">Weather & Temp</span>
+                      </div>
+                      <button
+                        type="button"
+                        id="toggle-weather-widget-btn"
+                        onClick={() =>
+                          onUpdateClockSettings({
+                            showWeatherWidget: !clockSettings.showWeatherWidget,
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase cursor-pointer transition-all ${
+                          clockSettings.showWeatherWidget
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
+                        }`}
+                      >
+                        {clockSettings.showWeatherWidget ? 'Enabled' : 'Disabled'}
+                      </button>
+                    </div>
+
+                    {clockSettings.showWeatherWidget && (
+                      <div className="space-y-2.5 pt-2 border-t border-neutral-800 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-neutral-400">Unit & City:</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateClockSettings({
+                                weatherTempUnit: clockSettings.weatherTempUnit === 'c' ? 'f' : 'c',
+                              })
+                            }
+                            className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-amber-300 font-mono font-bold text-[10px]"
+                          >
+                            °{(clockSettings.weatherTempUnit || 'f').toUpperCase()}
+                          </button>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={clockSettings.weatherCity || 'San Francisco'}
+                          onChange={(e) => onUpdateClockSettings({ weatherCity: e.target.value })}
+                          placeholder="City name"
+                          className="w-full bg-neutral-950 text-neutral-200 px-2.5 py-1 rounded-lg border border-neutral-800 text-xs outline-none focus:border-amber-400"
+                        />
+
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { id: 'pill', label: 'Pill' },
+                            { id: 'card', label: 'Card' },
+                            { id: 'minimal', label: 'Minimal' },
+                          ].map((wStyle) => (
+                            <button
+                              key={wStyle.id}
+                              type="button"
+                              onClick={() =>
+                                onUpdateClockSettings({
+                                  weatherWidgetStyle: wStyle.id as any,
+                                })
+                              }
+                              className={`py-1 px-1.5 rounded-lg border text-center text-[10px] cursor-pointer ${
+                                (clockSettings.weatherWidgetStyle || 'pill') === wStyle.id
+                                  ? 'border-amber-400 bg-amber-500/15 text-amber-300 font-bold'
+                                  : 'border-neutral-800 text-neutral-400 hover:text-white bg-neutral-950'
+                              }`}
+                            >
+                              {wStyle.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Daily Focus Goal Widget */}
+                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Target className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-neutral-200">Daily Focus Goal</span>
+                      </div>
+                      <button
+                        type="button"
+                        id="toggle-focus-goal-widget-btn"
+                        onClick={() =>
+                          onUpdateClockSettings({
+                            showFocusGoalWidget: !clockSettings.showFocusGoalWidget,
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase cursor-pointer transition-all ${
+                          clockSettings.showFocusGoalWidget
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
+                        }`}
+                      >
+                        {clockSettings.showFocusGoalWidget ? 'Enabled' : 'Disabled'}
+                      </button>
+                    </div>
+
+                    {clockSettings.showFocusGoalWidget && (
+                      <div className="space-y-2 pt-2 border-t border-neutral-800 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-neutral-400">Daily Target Sessions:</span>
+                          <span className="font-mono text-emerald-400 font-bold">
+                            {clockSettings.focusDailyTarget || 4} sessions
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="1"
+                          max="12"
+                          value={clockSettings.focusDailyTarget || 4}
+                          onChange={(e) =>
+                            onUpdateClockSettings({ focusDailyTarget: Number(e.target.value) })
+                          }
+                          className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick Desk Sticky Note Widget */}
+                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3 sm:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <StickyNote className="w-4 h-4 text-amber-400" />
+                        <span className="text-xs font-bold text-neutral-200">Desk Sticky Note / Quick Memo</span>
+                      </div>
+                      <button
+                        type="button"
+                        id="toggle-quick-note-widget-btn"
+                        onClick={() =>
+                          onUpdateClockSettings({
+                            showQuickNoteWidget: !clockSettings.showQuickNoteWidget,
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase cursor-pointer transition-all ${
+                          clockSettings.showQuickNoteWidget
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
+                        }`}
+                      >
+                        {clockSettings.showQuickNoteWidget ? 'Enabled' : 'Disabled'}
+                      </button>
+                    </div>
+
+                    {clockSettings.showQuickNoteWidget && (
+                      <div className="space-y-2 pt-2 border-t border-neutral-800 text-xs">
+                        <span className="text-[11px] text-neutral-400 block">Note Text:</span>
+                        <input
+                          type="text"
+                          value={clockSettings.quickNoteText ?? 'Deep Work Mode • Stay Hydrated 💧'}
+                          onChange={(e) => onUpdateClockSettings({ quickNoteText: e.target.value })}
+                          placeholder="e.g. Finish task, Stay hydrated..."
+                          className="w-full bg-neutral-950 text-neutral-200 px-3 py-1.5 rounded-lg border border-neutral-800 text-xs outline-none focus:border-amber-400"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* AMBIENT THEMES SECTION */}
               <div className="space-y-4 p-4 rounded-2xl bg-neutral-950/80 border border-amber-500/20 shadow-lg">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1187,79 +1871,257 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Custom Color Pickers */}
-              <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
-                <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block">
-                  Fine-tune Colors (Real-Time Palette)
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* 4. FONT COLOR & MULTI-COLOR MIX COMBOS (Requirement 4) */}
+              <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
                   <div>
-                    <label className="text-xs text-neutral-400 block mb-1.5">
-                      Background Color
+                    <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
+                      <Palette className="w-4 h-4 text-amber-400" />
+                      <span>Clock Font Color & Color Mix Combos</span>
                     </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="custom-bg-picker"
-                        value={ensureHex(clockSettings.customBg || activeBg, '#0f111a')}
-                        onChange={(e) =>
-                          onUpdateClockSettings({
-                            themeId: 'custom',
-                            customBg: e.target.value,
-                          })
-                        }
-                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
-                      />
-                      <span className="text-xs font-mono text-neutral-300 uppercase truncate">
-                        {clockSettings.customBg || currentTheme.name}
-                      </span>
-                    </div>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Choose single solid colors, rich multi-color gradient combinations, or blend your own custom dual-tone gradient.
+                    </p>
                   </div>
 
-                  <div>
-                    <label className="text-xs text-neutral-400 block mb-1.5">
-                      Digits Text Color
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="custom-text-picker"
-                        value={ensureHex(clockSettings.customTextColor || activeTextColor, '#ffffff')}
-                        onChange={(e) =>
-                          onUpdateClockSettings({
-                            themeId: 'custom',
-                            customTextColor: e.target.value,
-                          })
-                        }
-                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
-                      />
-                      <span className="text-xs font-mono text-neutral-300 uppercase truncate">
-                        {clockSettings.customTextColor || currentTheme.textColor}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-neutral-400 block mb-1.5">Accent Color</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="custom-accent-picker"
-                        value={ensureHex(clockSettings.customAccentColor || activeAccentColor, '#f59e0b')}
-                        onChange={(e) =>
-                          onUpdateClockSettings({
-                            themeId: 'custom',
-                            customAccentColor: e.target.value,
-                          })
-                        }
-                        className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
-                      />
-                      <span className="text-xs font-mono text-neutral-300 uppercase truncate">
-                        {clockSettings.customAccentColor || currentTheme.accentColor}
-                      </span>
-                    </div>
+                  {/* Color Mode Switcher */}
+                  <div className="flex items-center gap-1 bg-neutral-900 p-1 rounded-xl border border-neutral-800 self-start sm:self-auto">
+                    {[
+                      { id: 'solid', label: 'Solid Color' },
+                      { id: 'gradient', label: 'Color Mix Combos' },
+                      { id: 'custom-gradient', label: 'Custom Dual Blend' },
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => onUpdateClockSettings({ colorMode: mode.id as ClockColorMode })}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                          (clockSettings.colorMode || 'solid') === mode.id
+                            ? 'bg-amber-500 text-neutral-950 font-bold shadow-sm'
+                            : 'text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
+
+                {/* 1. SOLID COLOR MODE */}
+                {(clockSettings.colorMode === 'solid' || !clockSettings.colorMode) && (
+                  <div className="space-y-3">
+                    <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block">
+                      Single Solid Colors
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs text-neutral-400 block mb-1.5">
+                          Background Color
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            id="custom-bg-picker"
+                            value={ensureHex(clockSettings.customBg || activeBg, '#0f111a')}
+                            onChange={(e) =>
+                              onUpdateClockSettings({
+                                themeId: 'custom',
+                                customBg: e.target.value,
+                              })
+                            }
+                            className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                          />
+                          <span className="text-xs font-mono text-neutral-300 uppercase truncate">
+                            {clockSettings.customBg || currentTheme.name}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-neutral-400 block mb-1.5">
+                          Digits Text Color
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            id="custom-text-picker"
+                            value={ensureHex(clockSettings.customTextColor || activeTextColor, '#ffffff')}
+                            onChange={(e) =>
+                              onUpdateClockSettings({
+                                themeId: 'custom',
+                                customTextColor: e.target.value,
+                              })
+                            }
+                            className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                          />
+                          <span className="text-xs font-mono text-neutral-300 uppercase truncate">
+                            {clockSettings.customTextColor || currentTheme.textColor}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-neutral-400 block mb-1.5">Accent Color</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            id="custom-accent-picker"
+                            value={ensureHex(clockSettings.customAccentColor || activeAccentColor, '#f59e0b')}
+                            onChange={(e) =>
+                              onUpdateClockSettings({
+                                themeId: 'custom',
+                                customAccentColor: e.target.value,
+                              })
+                            }
+                            className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                          />
+                          <span className="text-xs font-mono text-neutral-300 uppercase truncate">
+                            {clockSettings.customAccentColor || currentTheme.accentColor}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. GRADIENT COLOR MIX COMBOS */}
+                {clockSettings.colorMode === 'gradient' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block">
+                        Curated Multi-Color Combos ({GRADIENT_PRESETS.length} Blends)
+                      </span>
+                      <span className="text-[10px] text-amber-400 font-mono">
+                        Active: {GRADIENT_PRESETS.find((p) => p.id === (clockSettings.gradientPresetId || 'sunset-blaze'))?.name}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                      {GRADIENT_PRESETS.map((preset) => {
+                        const isSelected = (clockSettings.gradientPresetId || 'sunset-blaze') === preset.id;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() =>
+                              onUpdateClockSettings({
+                                colorMode: 'gradient',
+                                gradientPresetId: preset.id,
+                              })
+                            }
+                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between h-20 ${
+                              isSelected
+                                ? 'border-amber-400 ring-2 ring-amber-400/30 bg-neutral-900 shadow-lg'
+                                : 'border-neutral-800 hover:border-neutral-700 bg-neutral-900/60'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <div
+                                className="w-10 h-3.5 rounded-full border border-white/20 shadow-sm"
+                                style={{ background: preset.gradient }}
+                              />
+                              {isSelected && (
+                                <span className="w-4 h-4 rounded-full bg-amber-400 text-neutral-950 flex items-center justify-center">
+                                  <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs font-bold text-neutral-200 truncate">
+                              {preset.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. CUSTOM DUAL BLEND GRADIENT */}
+                {clockSettings.colorMode === 'custom-gradient' && (
+                  <div className="space-y-4 p-3.5 rounded-xl bg-neutral-900/80 border border-neutral-800">
+                    <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block">
+                      Custom Dual-Tone Gradient Studio
+                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs text-neutral-400 block mb-1.5">Color 1 (Start)</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={ensureHex(clockSettings.customGradientStart || '#f59e0b', '#f59e0b')}
+                            onChange={(e) =>
+                              onUpdateClockSettings({
+                                colorMode: 'custom-gradient',
+                                customGradientStart: e.target.value,
+                              })
+                            }
+                            className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                          />
+                          <span className="text-xs font-mono text-neutral-300 uppercase">
+                            {clockSettings.customGradientStart || '#f59e0b'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-neutral-400 block mb-1.5">Color 2 (End)</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={ensureHex(clockSettings.customGradientEnd || '#f43f5e', '#f43f5e')}
+                            onChange={(e) =>
+                              onUpdateClockSettings({
+                                colorMode: 'custom-gradient',
+                                customGradientEnd: e.target.value,
+                              })
+                            }
+                            className="w-8 h-8 rounded-lg border border-neutral-700 cursor-pointer bg-transparent"
+                          />
+                          <span className="text-xs font-mono text-neutral-300 uppercase">
+                            {clockSettings.customGradientEnd || '#f43f5e'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                          <label className="text-xs text-neutral-400">Gradient Angle</label>
+                          <span className="text-xs font-mono text-amber-400 font-bold">
+                            {clockSettings.customGradientAngle ?? 135}°
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="360"
+                          step="5"
+                          value={clockSettings.customGradientAngle ?? 135}
+                          onChange={(e) =>
+                            onUpdateClockSettings({
+                              colorMode: 'custom-gradient',
+                              customGradientAngle: Number(e.target.value),
+                            })
+                          }
+                          className="w-full accent-amber-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg mt-2"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Live Gradient Preview Bar */}
+                    <div
+                      className="w-full h-8 rounded-xl border border-white/20 shadow-inner flex items-center justify-center font-mono font-bold text-xs text-white"
+                      style={{
+                        background: `linear-gradient(${clockSettings.customGradientAngle ?? 135}deg, ${
+                          clockSettings.customGradientStart || '#f59e0b'
+                        } 0%, ${clockSettings.customGradientEnd || '#f43f5e'} 100%)`,
+                        textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                      }}
+                    >
+                      <span>Custom Gradient Mix Preview</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Extended Typography & Font Picker (13 Fonts) */}
@@ -2061,17 +2923,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 2: POMODORO & SOUND ALERTS */}
           {activeTab === 'pomodoro' && (
             <div className="space-y-6">
-              {/* SECTION 0: POMODORO AMBIENT THEMES & BACKGROUNDS */}
+              {/* SECTION: POMODORO FOCUS ATMOSPHERES */}
               <div className="space-y-3 p-4 rounded-2xl bg-neutral-950/80 border border-amber-500/20 shadow-lg">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-                    <span>Pomodoro Ambient Themes & Backgrounds</span>
-                  </label>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30">
-                    {AMBIENT_THEMES.length - 1} Atmospheres
-                  </span>
-                </div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
@@ -3285,6 +4138,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     checked={clockSettings.antiBurnIn}
                     onChange={(e) => onUpdateClockSettings({ antiBurnIn: e.target.checked })}
                     className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
+                  />
+                </label>
+              </div>
+
+              {/* Privacy & Party Stats Sharing */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Privacy & Study Parties</span>
+                </label>
+
+                <label
+                  id="toggle-share-stats-label"
+                  className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer hover:border-neutral-700 transition-colors"
+                >
+                  <div className="pr-4">
+                    <span className="text-xs font-medium text-neutral-200 block">
+                      Allow Party Members to View My Stats
+                    </span>
+                    <span className="text-[11px] text-neutral-500">
+                      When enabled, teammates can click your name in the leaderboard to view your daily focus, previous focus time, and focus streak. When disabled, your stats remain strictly private.
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="toggle-share-stats"
+                    checked={clockSettings.shareStatsWithParty !== false}
+                    onChange={(e) => onUpdateClockSettings({ shareStatsWithParty: e.target.checked })}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 border-neutral-700 cursor-pointer"
                   />
                 </label>
               </div>

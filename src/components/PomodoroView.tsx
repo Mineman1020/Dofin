@@ -893,40 +893,85 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                   <span className="tabular-nums">{formattedSeconds}</span>
                 </div>
 
-                {/* Quick Adjust Buttons (Disappears when idle, tight padding) */}
-                <div
-                  className={`flex items-center gap-2 mt-1 transition-all duration-500 ${
-                    isIdle ? 'opacity-0 pointer-events-none' : 'opacity-70 hover:opacity-100'
-                  }`}
-                >
-                  <button
-                    id="pomo-minus-time-btn"
-                    onClick={handleMinusMinute}
-                    className="p-1 rounded-lg border text-xs cursor-pointer transition-colors"
-                    style={{
-                      backgroundColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                      borderColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
-                      color: resolvedTheme.textColor,
-                    }}
-                    title="-1 minute"
+                {/* Preset Timers Quick-Start Options:
+                    - Show preset timer options only when the size of the clock is increased (circleDiameter > 340)
+                    - When kept small (circleDiameter <= 340), remove preset clock options
+                    - When timer is started (isRunning), show only countdown in this widget */}
+                {!isRunning && circleDiameter > 340 && (
+                  <div
+                    id="pomodoro-clock-preset-timers"
+                    className="flex items-center justify-center gap-1.5 mt-2 z-20 pointer-events-auto select-none"
                   >
-                    <Minus className="w-3 h-3" />
-                  </button>
-                  <span className="text-[10px] font-mono text-neutral-500">±1m</span>
-                  <button
-                    id="pomo-plus-time-btn"
-                    onClick={handleAddMinute}
-                    className="p-1 rounded-lg border text-xs cursor-pointer transition-colors"
-                    style={{
-                      backgroundColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                      borderColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
-                      color: resolvedTheme.textColor,
-                    }}
-                    title="+1 minute"
+                    {[
+                      { label: '5m', minutes: 5 },
+                      { label: '15m', minutes: 15 },
+                      { label: '25m', minutes: 25 },
+                      { label: '50m', minutes: 50 },
+                    ].map((preset) => {
+                      const isCurrent = settings.workMinutes === preset.minutes;
+                      return (
+                        <button
+                          key={preset.minutes}
+                          id={`pomo-clock-preset-${preset.minutes}m-btn`}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUpdateSettings?.({
+                              workMinutes: preset.minutes,
+                              presetTimerDefault: preset.minutes,
+                            });
+                            timer.startPresetTimer(preset.minutes, 'work');
+                          }}
+                          className={`apple-hover px-2 sm:px-2.5 py-1 rounded-lg text-xs font-mono font-bold tracking-tight border cursor-pointer transition-all active:scale-95 shadow-sm ${
+                            isCurrent
+                              ? 'border-amber-400 bg-amber-400/25 text-amber-300 ring-1 ring-amber-400/50'
+                              : 'border-white/15 hover:border-amber-400/60 bg-black/40 hover:bg-black/70 text-neutral-300 hover:text-white'
+                          }`}
+                          title={`Quick-launch ${preset.minutes}m focus session`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Quick Adjust Buttons (Only visible when NOT running to preserve countdown purity when started) */}
+                {!isRunning && (
+                  <div
+                    className={`flex items-center gap-2 mt-1.5 transition-all duration-500 ${
+                      isIdle ? 'opacity-0 pointer-events-none' : 'opacity-70 hover:opacity-100'
+                    }`}
                   >
-                    <Plus className="w-3 h-3" />
-                  </button>
-                </div>
+                    <button
+                      id="pomo-minus-time-btn"
+                      onClick={handleMinusMinute}
+                      className="p-1 rounded-lg border text-xs cursor-pointer transition-colors"
+                      style={{
+                        backgroundColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                        borderColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
+                        color: resolvedTheme.textColor,
+                      }}
+                      title="-1 minute"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="text-[10px] font-mono text-neutral-500">±1m</span>
+                    <button
+                      id="pomo-plus-time-btn"
+                      onClick={handleAddMinute}
+                      className="p-1 rounded-lg border text-xs cursor-pointer transition-colors"
+                      style={{
+                        backgroundColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                        borderColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
+                        color: resolvedTheme.textColor,
+                      }}
+                      title="+1 minute"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

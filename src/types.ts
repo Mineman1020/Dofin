@@ -71,6 +71,37 @@ export interface ThemePreset {
 
 export type WallpaperMode = 'theme' | 'image' | 'slideshow' | 'video';
 
+export type ClockStyle =
+  | 'modern'
+  | 'flip'
+  | 'analog'
+  | 'seven-segment'
+  | 'neon-cyber'
+  | 'arc-radial';
+
+export type ClockColorMode = 'solid' | 'gradient' | 'custom-gradient';
+export type MatchedBackgroundMode = 'off' | 'matched' | 'contrast';
+
+export interface ElementLayoutSettings {
+  x: number;
+  y: number;
+  scaleX: number; // Lateral width scale (0.4 to 2.5, default 1)
+  scaleY: number; // Vertical height scale (0.4 to 2.5, default 1)
+  rotation: number; // Rotation in degrees (-180 to 180, default 0)
+}
+
+export type BatteryWidgetStyle = 'pill' | 'gauge' | 'minimal' | 'cyber';
+export type StopwatchWidgetStyle = 'compact' | 'ring' | 'card' | 'cyber';
+export type WeatherWidgetStyle = 'pill' | 'card' | 'minimal';
+export type WidgetTheme = 'glass' | 'solid' | 'glow' | 'minimal';
+
+export interface GradientPreset {
+  id: string;
+  name: string;
+  gradient: string;
+  preview: string;
+}
+
 export interface ClockSettings {
   themeId: string;
   customBg: string;
@@ -109,6 +140,66 @@ export interface ClockSettings {
   introEffect?: IntroEffectId;
   introSound?: boolean;
   shareStatsWithParty?: boolean; // When false, keeps detailed stats private in study parties (default: true)
+
+  // Clock Design Style
+  clockStyle?: ClockStyle;
+  clockFaceTransparency?: number; // 0 to 100% background transparency for clock face (chronometer, cyberpunk HUD, etc.)
+
+  // Freeform Layout & Drag Scaling
+  customLayoutEnabled?: boolean;
+  clockPosition?: { x: number; y: number };
+  clockScale?: number; // 0.5 to 2.5 (default 1)
+  clockScaleX?: number; // 0.4 to 2.5 (lateral size, default 1)
+  clockScaleY?: number; // 0.4 to 2.5 (vertical size, default 1)
+  clockRotation?: number; // -180 to 180 degrees (default 0)
+
+  // Individual Element Adjustments (Date, Focus Mantra, AM/PM tag)
+  dateLayout?: ElementLayoutSettings;
+  mantraLayout?: ElementLayoutSettings;
+  ampmLayout?: ElementLayoutSettings;
+
+  // Color Mixes & Gradients & Matched Background
+  colorMode?: ClockColorMode;
+  gradientPresetId?: string;
+  customGradientStart?: string;
+  customGradientEnd?: string;
+  customGradientAngle?: number; // 0 to 360 deg
+  matchedBackground?: MatchedBackgroundMode; // 'off' | 'matched' | 'contrast'
+
+  // Widgets
+  showBatteryWidget?: boolean;
+  batteryWidgetStyle?: BatteryWidgetStyle;
+  batteryWidgetPosition?: { x: number; y: number };
+  batteryWidgetScale?: number; // 0.5 to 2.5 (default 1)
+
+  showStopwatchWidget?: boolean;
+  stopwatchWidgetStyle?: StopwatchWidgetStyle;
+  stopwatchWidgetPosition?: { x: number; y: number };
+  stopwatchWidgetScale?: number; // 0.5 to 2.5 (default 1)
+
+  // Additional Standby Desktop Widgets
+  showWeatherWidget?: boolean;
+  weatherWidgetStyle?: WeatherWidgetStyle;
+  weatherWidgetPosition?: { x: number; y: number };
+  weatherWidgetScale?: number; // 0.5 to 2.5 (default 1)
+  weatherTempUnit?: 'c' | 'f';
+  weatherCity?: string;
+
+  showFocusGoalWidget?: boolean;
+  focusGoalWidgetPosition?: { x: number; y: number };
+  focusGoalWidgetScale?: number; // 0.5 to 2.5 (default 1)
+  focusDailyTarget?: number; // Target sessions per day (default 4)
+
+  showQuickNoteWidget?: boolean;
+  quickNoteWidgetPosition?: { x: number; y: number };
+  quickNoteWidgetScale?: number; // 0.5 to 2.5 (default 1)
+  quickNoteText?: string;
+
+  showPomodoroWidget?: boolean;
+  pomodoroWidgetPosition?: { x: number; y: number };
+  pomodoroWidgetScale?: number; // 0.5 to 2.5 (default 1)
+
+  widgetTheme?: WidgetTheme;
 }
 
 export type SoundAlertChoice =
@@ -155,6 +246,7 @@ export interface PomodoroSettings {
   circleSize?: number;
   timerFontSize?: number; // Custom font size for pomodoro timer numbers
   verticalOffset?: number; // Upward/downward adjustment for pomodoro circle (in px, negative = moved upward)
+  presetTimerDefault?: number; // e.g. 5, 15, 25, 50 minutes
 
   // Pomodoro Meter & Theme Customization
   themeId?: string; // 'sync' | preset id | 'custom'
@@ -237,4 +329,5 @@ export interface PartyMessage {
   senderAvatarColor?: string;
   text: string;
   createdAt: string;
+  isEncrypted?: boolean;
 }

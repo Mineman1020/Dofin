@@ -120,25 +120,22 @@ body,
 }
 
 .apple-pill-hover:hover {
-  transform: scale(1.06) translateY(-2px) !important;
   box-shadow: 0 8px 22px -4px rgba(0, 0, 0, 0.3) !important;
 }
 
 .apple-pill-hover:active {
-  transform: scale(0.95) translateY(0.5px) !important;
+  opacity: 0.9 !important;
 }
 
-/* Apple-style Primary Clock & Timer Hover Focus */
+/* Apple-style Primary Clock & Timer Hover Focus (No physical rise or scale jump) */
 .apple-display-hover {
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-              filter 0.25s ease !important;
-  will-change: transform, filter;
+  transition: filter 0.2s ease, opacity 0.2s ease !important;
+  will-change: filter, opacity;
   cursor: default;
 }
 
 .apple-display-hover:hover {
-  transform: scale(1.02) translateY(-2px) !important;
-  filter: brightness(1.08);
+  filter: brightness(1.05);
 }
 
 /* Interactive Cursor Glow Accents - iOS 26 High-Refraction Glass */
