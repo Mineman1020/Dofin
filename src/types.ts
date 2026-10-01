@@ -15,7 +15,13 @@ export type ClockFontFamily =
   | 'cinzel'
   | 'montserrat'
   | 'courier'
-  | 'poppins';
+  | 'poppins'
+  | 'syne'
+  | 'righteous'
+  | 'silkscreen'
+  | 'cormorant'
+  | 'unbounded'
+  | 'major-mono';
 
 export type ClockDigitSize = 'medium' | 'large' | 'huge' | 'fill';
 
@@ -32,7 +38,12 @@ export type AmbientThemeId =
   | 'golden-hour'
   | 'retro-crt'
   | 'sunbeam'
-  | 'deep-abyss';
+  | 'deep-abyss'
+  | 'cherry-blossom'
+  | 'neon-cyber-city'
+  | 'autumn-glade'
+  | 'emerald-enchanted'
+  | 'desert-dusk';
 
 export type AmbientSoundType =
   | 'none'
@@ -92,7 +103,7 @@ export interface ElementLayoutSettings {
 
 export type BatteryWidgetStyle = 'pill' | 'gauge' | 'minimal' | 'cyber';
 export type StopwatchWidgetStyle = 'compact' | 'ring' | 'card' | 'cyber';
-export type WeatherWidgetStyle = 'pill' | 'card' | 'minimal';
+export type WeatherWidgetStyle = 'pill' | 'card' | 'detailed' | 'minimal';
 export type WidgetTheme = 'glass' | 'solid' | 'glow' | 'minimal';
 
 export interface GradientPreset {
@@ -177,29 +188,17 @@ export interface ClockSettings {
   stopwatchWidgetPosition?: { x: number; y: number };
   stopwatchWidgetScale?: number; // 0.5 to 2.5 (default 1)
 
-  // Additional Standby Desktop Widgets
   showWeatherWidget?: boolean;
+  weatherLocation?: string;
+  weatherLatitude?: number;
+  weatherLongitude?: number;
+  weatherUnit?: 'celsius' | 'fahrenheit';
   weatherWidgetStyle?: WeatherWidgetStyle;
   weatherWidgetPosition?: { x: number; y: number };
   weatherWidgetScale?: number; // 0.5 to 2.5 (default 1)
-  weatherTempUnit?: 'c' | 'f';
-  weatherCity?: string;
-
-  showFocusGoalWidget?: boolean;
-  focusGoalWidgetPosition?: { x: number; y: number };
-  focusGoalWidgetScale?: number; // 0.5 to 2.5 (default 1)
-  focusDailyTarget?: number; // Target sessions per day (default 4)
-
-  showQuickNoteWidget?: boolean;
-  quickNoteWidgetPosition?: { x: number; y: number };
-  quickNoteWidgetScale?: number; // 0.5 to 2.5 (default 1)
-  quickNoteText?: string;
-
-  showPomodoroWidget?: boolean;
-  pomodoroWidgetPosition?: { x: number; y: number };
-  pomodoroWidgetScale?: number; // 0.5 to 2.5 (default 1)
 
   widgetTheme?: WidgetTheme;
+  widgetEditMode?: boolean; // Mode to drag & resize widgets
 }
 
 export type SoundAlertChoice =
@@ -246,7 +245,6 @@ export interface PomodoroSettings {
   circleSize?: number;
   timerFontSize?: number; // Custom font size for pomodoro timer numbers
   verticalOffset?: number; // Upward/downward adjustment for pomodoro circle (in px, negative = moved upward)
-  presetTimerDefault?: number; // e.g. 5, 15, 25, 50 minutes
 
   // Pomodoro Meter & Theme Customization
   themeId?: string; // 'sync' | preset id | 'custom'
@@ -257,6 +255,7 @@ export interface PomodoroSettings {
   customLongBreakColor?: string;
   ringWidth?: number; // e.g. 4, 8, 12, 16
   enableGlow?: boolean;
+  idleMinimalMode?: boolean; // When idle for 30s while running: hide taskbar, controls, and expand into glowing edge rectangle (default: true)
 
   // Ambient atmosphere settings for Pomodoro
   ambientTheme?: AmbientThemeId;

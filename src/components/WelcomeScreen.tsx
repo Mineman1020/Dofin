@@ -21,7 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ClockSettings, PomodoroSettings, ViewMode } from '../types';
-import { THEME_PRESETS, FONT_OPTIONS } from '../utils/constants';
+import { THEME_PRESETS, FONT_OPTIONS, FONT_OPTICAL_SCALES } from '../utils/constants';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
 import { useFullscreen } from '../utils/useFullscreen';
 
@@ -430,7 +430,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                     ? 'border-white/5 bg-[#0e1118]'
                     : 'border-neutral-200/80 bg-neutral-50/90'
                 }`}
-                style={{ fontFamily: selectedFont.cssFamily }}
+                style={{
+                  fontFamily: selectedFont.cssFamily,
+                  transform: `scale(${FONT_OPTICAL_SCALES[clockSettings.fontFamily] || 1.0})`,
+                }}
               >
                 <span className="text-2xl sm:text-3xl font-black tracking-tight leading-none group-hover:scale-105 transition-transform duration-300 ease-out inline-block">
                   {String(displayH).padStart(2, '0')}:{displayM}

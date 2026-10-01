@@ -56,6 +56,42 @@ export const GRADIENT_PRESETS: GradientPreset[] = [
     gradient: 'linear-gradient(135deg, #ff007f 0%, #7928ca 100%)',
     preview: 'from-pink-600 to-purple-700',
   },
+  {
+    id: 'amethyst-twilight',
+    name: 'Amethyst Twilight',
+    gradient: 'linear-gradient(135deg, #c084fc 0%, #ec4899 50%, #06b6d4 100%)',
+    preview: 'from-purple-400 via-pink-500 to-cyan-500',
+  },
+  {
+    id: 'matcha-emerald',
+    name: 'Matcha Breeze',
+    gradient: 'linear-gradient(135deg, #a3e635 0%, #10b981 50%, #06b6d4 100%)',
+    preview: 'from-lime-400 via-emerald-500 to-cyan-500',
+  },
+  {
+    id: 'hyper-crimson',
+    name: 'Hyper Crimson',
+    gradient: 'linear-gradient(135deg, #f43f5e 0%, #e11d48 50%, #ea580c 100%)',
+    preview: 'from-rose-500 via-red-600 to-orange-500',
+  },
+  {
+    id: 'prismatic-aurora',
+    name: 'Prismatic Aurora',
+    gradient: 'linear-gradient(135deg, #2dd4bf 0%, #38bdf8 35%, #818cf8 70%, #f472b6 100%)',
+    preview: 'from-teal-400 via-sky-400 to-pink-400',
+  },
+  {
+    id: 'peach-blossom',
+    name: 'Peach Blossom',
+    gradient: 'linear-gradient(135deg, #fbcfe8 0%, #f472b6 50%, #fb923c 100%)',
+    preview: 'from-pink-200 via-pink-400 to-orange-400',
+  },
+  {
+    id: 'copper-patina',
+    name: 'Copper & Patina',
+    gradient: 'linear-gradient(135deg, #fb923c 0%, #d97706 40%, #14b8a6 100%)',
+    preview: 'from-orange-400 via-amber-600 to-teal-500',
+  },
 ];
 
 /**
@@ -152,37 +188,6 @@ export function getDominantClockColor(settings: ClockSettings, fallbackSolidColo
     if (settings.customGradientStart) return settings.customGradientStart;
   }
   return settings.customTextColor || fallbackSolidColor || '#f59e0b';
-}
-
-/**
- * Robustly resolves both text and accent colors for any clock style
- * based on selected solid colors, gradient presets, or dual blend
- */
-export function getClockResolvedColors(
-  settings: ClockSettings,
-  defaultThemeTextColor: string,
-  defaultThemeAccentColor: string
-): { textColor: string; accentColor: string } {
-  if (settings.colorMode === 'gradient') {
-    const preset =
-      GRADIENT_PRESETS.find((p) => p.id === settings.gradientPresetId) ||
-      GRADIENT_PRESETS[0];
-    const hexes = preset.gradient.match(/#(?:[0-9a-fA-F]{3}){1,2}/g) || [];
-    const textCol = hexes[0] || settings.customTextColor || defaultThemeTextColor;
-    const accentCol = hexes[1] || hexes[0] || settings.customAccentColor || defaultThemeAccentColor;
-    return { textColor: textCol, accentColor: accentCol };
-  }
-
-  if (settings.colorMode === 'custom-gradient') {
-    const textCol = settings.customGradientStart || settings.customTextColor || defaultThemeTextColor;
-    const accentCol = settings.customGradientEnd || settings.customAccentColor || defaultThemeAccentColor;
-    return { textColor: textCol, accentColor: accentCol };
-  }
-
-  // Solid color mode
-  const textCol = settings.customTextColor || defaultThemeTextColor;
-  const accentCol = settings.customAccentColor || settings.customTextColor || defaultThemeAccentColor;
-  return { textColor: textCol, accentColor: accentCol };
 }
 
 /**

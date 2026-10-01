@@ -1,12 +1,12 @@
 {
-  "projectId": "tokyo-talent-3lxdt",
-  "appId": "1:287754696851:web:71715c89dc077ab8d13566",
-  "apiKey": "AIzaSyAD1iCfcMkizG9pWZ8sKLwGjG_mb_LShwk",
-  "authDomain": "tokyo-talent-3lxdt.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-dofin-4d6eb305-b302-409d-b415-700233adc845",
-  "storageBucket": "tokyo-talent-3lxdt.firebasestorage.app",
-  "messagingSenderId": "287754696851",
+  "projectId": "gen-lang-client-0053194323",
+  "appId": "1:233836662419:web:a9f298a2200d190c818766",
+  "apiKey": "AIzaSyAPs48d7iSIhhy-RUQo8RzmCgdG7j1mtAo",
+  "authDomain": "gen-lang-client-0053194323.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-dek2-1c33f5b7-13a5-4507-9fc4-980c4d56b915",
+  "storageBucket": "gen-lang-client-0053194323.firebasestorage.app",
+  "messagingSenderId": "233836662419",
   "measurementId": "",
-  "oAuthClientId": "287754696851-6k78bdpjo35p69eit3uug2hnpl8tmktv.apps.googleusercontent.com",
+  "oAuthClientId": "233836662419-v6ittbspsrh4fqgppv7okijpak5jr6c1.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

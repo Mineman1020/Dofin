@@ -29,64 +29,6 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
     }));
   }, []);
 
-  const raindrops = useMemo(() => {
-    return Array.from({ length: 42 }).map((_, i) => ({
-      id: i,
-      left: `${((i * 29.3) % 100)}%`,
-      duration: `${0.75 + ((i * 13) % 0.9)}s`,
-      delay: `${((i * 17) % 2.5)}s`,
-      height: `${35 + ((i * 19) % 55)}px`,
-      opacity: 0.15 + ((i * 7) % 0.35),
-    }));
-  }, []);
-
-  const embers = useMemo(() => {
-    return Array.from({ length: 32 }).map((_, i) => ({
-      id: i,
-      left: `${15 + ((i * 23.7) % 70)}%`,
-      size: `${2 + ((i * 5) % 4)}px`,
-      duration: `${4 + ((i * 13) % 4.5)}s`,
-      delay: `${((i * 19) % 4.5)}s`,
-      driftX: `${((i % 2 === 0 ? 1 : -1) * (15 + ((i * 7) % 40)))}px`,
-      opacity: 0.4 + ((i * 11) % 0.5),
-    }));
-  }, []);
-
-  const sunbeamMotes = useMemo(() => {
-    return Array.from({ length: 28 }).map((_, i) => ({
-      id: i,
-      left: `${20 + ((i * 31) % 60)}%`,
-      top: `${15 + ((i * 27) % 70)}%`,
-      size: `${1.5 + ((i * 7) % 3)}px`,
-      duration: `${6 + ((i * 17) % 5)}s`,
-      delay: `${(i * 13) % 6}s`,
-    }));
-  }, []);
-
-  const oceanGlints = useMemo(() => {
-    return Array.from({ length: 34 }).map((_, i) => ({
-      id: i,
-      left: `${22 + ((i * 19.3) % 56)}%`,
-      top: `${68 + ((i * 7.1) % 26)}%`,
-      width: `${8 + ((i * 13) % 28)}px`,
-      height: `${1 + (i % 2 === 0 ? 1 : 1.5)}px`,
-      duration: `${2 + ((i * 5) % 2.5)}s`,
-      delay: `${((i * 11) % 3.5)}s`,
-      opacity: 0.35 + ((i * 17) % 0.55),
-    }));
-  }, []);
-
-  const rainSplashes = useMemo(() => {
-    return Array.from({ length: 22 }).map((_, i) => ({
-      id: i,
-      left: `${3 + ((i * 21.7) % 94)}%`,
-      bottom: `${4 + ((i * 11.3) % 22)}%`,
-      duration: `${0.85 + ((i * 7) % 0.75)}s`,
-      delay: `${((i * 13) % 2.6)}s`,
-      size: `${16 + ((i * 9) % 24)}px`,
-    }));
-  }, []);
-
   if (!ambientTheme || ambientTheme === 'none') {
     return null;
   }
@@ -129,6 +71,45 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
           }`}
         />
       )}
+
+      {/* Universal Ambient Starfield (Only stars remain across all ambient themes) */}
+      {particles && (
+        <div className="absolute inset-0 pointer-events-none z-10">
+          {starfield.map((star) => (
+            <div
+              key={star.id}
+              className="absolute rounded-full pointer-events-none"
+              style={{
+                left: star.left,
+                top: star.top,
+                width: star.size,
+                height: star.size,
+                backgroundColor:
+                  ambientTheme === 'aurora'
+                    ? '#a7f3d0'
+                    : ambientTheme === 'campfire' || ambientTheme === 'autumn-glade'
+                    ? '#fef08a'
+                    : ambientTheme === 'beachside-sunset' || ambientTheme === 'cherry-blossom'
+                    ? '#fce7f3'
+                    : ambientTheme === 'rainy-day' || ambientTheme === 'rainy-window'
+                    ? '#93c5fd'
+                    : '#ffffff',
+                boxShadow: `0 0 5px ${
+                  ambientTheme === 'aurora'
+                    ? '#34d399'
+                    : ambientTheme === 'campfire'
+                    ? '#f59e0b'
+                    : 'rgba(255, 255, 255, 0.7)'
+                }`,
+                opacity: star.opacity,
+                animation: `starTwinkle ${star.duration} ease-in-out infinite`,
+                animationDelay: star.delay,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {/* BEACHSIDE SUNSET */}
       {ambientTheme === 'beachside-sunset' && (
         <div className="absolute inset-0 w-full h-full bg-[#120720] overflow-hidden">
@@ -218,24 +199,6 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
                 'linear-gradient(180deg, rgba(253, 224, 71, 0.7) 0%, rgba(251, 146, 60, 0.5) 40%, rgba(244, 63, 94, 0.25) 80%, transparent 100%)',
             }}
           />
-
-          {/* 7. Ocean Water Shimmer Glints */}
-          {particles &&
-            oceanGlints.map((glint) => (
-              <div
-                key={glint.id}
-                className="absolute rounded-full bg-gradient-to-r from-transparent via-amber-200 to-transparent"
-                style={{
-                  left: glint.left,
-                  top: glint.top,
-                  width: glint.width,
-                  height: glint.height,
-                  opacity: glint.opacity,
-                  animation: `oceanGlint ${glint.duration} ease-in-out infinite`,
-                  animationDelay: glint.delay,
-                }}
-              />
-            ))}
 
           {/* 8. Layered SVG Ocean Waves Swelling and Rolling */}
           {/* Swell Wave 1 (Midground deep turquoise swell) */}
@@ -376,42 +339,6 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
           <div className="absolute bottom-1/3 right-1/4 w-56 h-56 rounded-full blur-[95px] bg-sky-500/15" />
           <div className="absolute bottom-1/6 left-2/3 w-40 h-40 rounded-full blur-[70px] bg-rose-500/10" />
 
-          {/* 5. Falling Diagonal Raindrop Streaks */}
-          {particles && (
-            <div className="absolute inset-0 overflow-hidden transform -rotate-6 scale-110">
-              {raindrops.map((drop) => (
-                <div
-                  key={drop.id}
-                  className="absolute w-[1.2px] bg-gradient-to-b from-transparent via-sky-200/80 to-transparent"
-                  style={{
-                    left: drop.left,
-                    height: `${parseInt(drop.height, 10) * 1.3}px`,
-                    animation: `rainFall ${drop.duration} linear infinite`,
-                    animationDelay: drop.delay,
-                    opacity: drop.opacity,
-                  }}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* 6. Raindrop Splash Ripples on Ground / Sill */}
-          {particles &&
-            rainSplashes.map((splash) => (
-              <div
-                key={splash.id}
-                className="absolute rounded-full border border-sky-300/60 pointer-events-none"
-                style={{
-                  left: splash.left,
-                  bottom: splash.bottom,
-                  width: splash.size,
-                  height: splash.size,
-                  animation: `waterSplashRipple ${splash.duration} ease-out infinite`,
-                  animationDelay: splash.delay,
-                }}
-              />
-            ))}
-
           {/* 7. Fine Mist Droplet Condensation Grid Overlay */}
           <div
             className="absolute inset-0 opacity-25 mix-blend-overlay pointer-events-none"
@@ -430,24 +357,6 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
       {/* 1. AURORA BOREALIS */}
       {ambientTheme === 'aurora' && (
         <div className="absolute inset-0 w-full h-full bg-[#020710]">
-          {/* Arctic Stars */}
-          {particles &&
-            starfield.slice(0, 45).map((star) => (
-              <div
-                key={star.id}
-                className="absolute rounded-full bg-white"
-                style={{
-                  left: star.left,
-                  top: star.top,
-                  width: star.size,
-                  height: star.size,
-                  animation: `starTwinkle ${star.duration} ease-in-out infinite`,
-                  animationDelay: star.delay,
-                  opacity: star.opacity,
-                }}
-              />
-            ))}
-
           {/* Primary Aurora Emerald Curtain */}
           <div
             className="absolute -top-[20%] left-[-10%] w-[120%] h-[85%] blur-[90px] opacity-60 mix-blend-screen"
@@ -495,35 +404,6 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
             className="absolute bottom-1/3 right-1/4 w-[450px] h-[300px] rounded-full blur-[120px] opacity-20"
             style={{ background: 'radial-gradient(circle, #a855f7 0%, #3b82f6 60%, transparent 80%)' }}
           />
-
-          {/* Celestial Starfield */}
-          {particles &&
-            starfield.map((star) => (
-              <div
-                key={star.id}
-                className="absolute rounded-full bg-white shadow-sm"
-                style={{
-                  left: star.left,
-                  top: star.top,
-                  width: star.size,
-                  height: star.size,
-                  boxShadow: `0 0 4px rgba(255, 255, 255, ${star.opacity})`,
-                  animation: `starTwinkle ${star.duration} ease-in-out infinite`,
-                  animationDelay: star.delay,
-                  opacity: star.opacity,
-                }}
-              />
-            ))}
-
-          {/* Occasional Shooting Star */}
-          <div
-            className="absolute top-12 -left-20 w-36 h-[1.5px] bg-gradient-to-r from-transparent via-sky-300 to-white opacity-0"
-            style={{
-              transform: 'rotate(-28deg)',
-              animation: 'rainFall 10s ease-in infinite',
-              animationDelay: '3.5s',
-            }}
-          />
         </div>
       )}
 
@@ -543,25 +423,6 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
             className="absolute top-2/3 left-1/2 w-64 h-64 rounded-full blur-[85px] opacity-15"
             style={{ background: '#f43f5e' }}
           />
-
-          {/* Diagonal Rain Streaks */}
-          {particles && (
-            <div className="absolute inset-0 overflow-hidden transform rotate-6 scale-110">
-              {raindrops.map((drop) => (
-                <div
-                  key={drop.id}
-                  className="absolute w-[1px] bg-gradient-to-b from-transparent via-sky-200/70 to-transparent"
-                  style={{
-                    left: drop.left,
-                    height: drop.height,
-                    animation: `rainFall ${drop.duration} linear infinite`,
-                    animationDelay: drop.delay,
-                    opacity: drop.opacity,
-                  }}
-                />
-              ))}
-            </div>
-          )}
 
           {/* Soft condensation droplets layer */}
           <div
@@ -596,24 +457,6 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
               animation: 'hearthBreathe 2.4s ease-in-out infinite alternate',
             }}
           />
-
-          {/* Rising Ember Sparks */}
-          {particles &&
-            embers.map((ember) => (
-              <div
-                key={ember.id}
-                className="absolute bottom-4 rounded-full bg-gradient-to-t from-orange-500 to-amber-300 shadow-sm"
-                style={{
-                  left: ember.left,
-                  width: ember.size,
-                  height: ember.size,
-                  boxShadow: `0 0 6px rgba(249, 115, 22, ${ember.opacity})`,
-                  animation: `emberRise ${ember.duration} ease-out infinite`,
-                  animationDelay: ember.delay,
-                  ['--ember-drift-x' as string]: ember.driftX,
-                }}
-              />
-            ))}
 
           {/* Subtle charred vignette */}
           <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-black/80" />
@@ -725,24 +568,6 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
 
           {/* Sun Halo */}
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-32 rounded-t-full blur-[40px] bg-amber-300/40" />
-
-          {/* Floating Twilight Dust */}
-          {particles &&
-            starfield.slice(0, 30).map((dust) => (
-              <div
-                key={dust.id}
-                className="absolute rounded-full bg-amber-200"
-                style={{
-                  left: dust.left,
-                  top: dust.top,
-                  width: dust.size,
-                  height: dust.size,
-                  animation: `starTwinkle ${dust.duration} ease-in-out infinite`,
-                  animationDelay: dust.delay,
-                  opacity: 0.35,
-                }}
-              />
-            ))}
         </div>
       )}
 
@@ -798,24 +623,6 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
               animation: 'sunbeamPulse 12s ease-in-out infinite alternate',
             }}
           />
-
-          {/* Floating Sunlight Dust Motes */}
-          {particles &&
-            sunbeamMotes.map((mote) => (
-              <div
-                key={mote.id}
-                className="absolute rounded-full bg-amber-300/80 shadow-sm"
-                style={{
-                  left: mote.left,
-                  top: mote.top,
-                  width: mote.size,
-                  height: mote.size,
-                  animation: `starTwinkle ${mote.duration} ease-in-out infinite`,
-                  animationDelay: mote.delay,
-                  opacity: 0.6,
-                }}
-              />
-            ))}
         </div>
       )}
 
@@ -832,27 +639,151 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
             }}
           />
 
-          {/* Bioluminescent floating spores */}
-          {particles &&
-            starfield.slice(0, 35).map((spore) => (
-              <div
-                key={spore.id}
-                className="absolute rounded-full bg-teal-300"
-                style={{
-                  left: spore.left,
-                  top: spore.top,
-                  width: spore.size,
-                  height: spore.size,
-                  boxShadow: '0 0 8px rgba(45, 212, 191, 0.6)',
-                  animation: `starTwinkle ${spore.duration} ease-in-out infinite`,
-                  animationDelay: spore.delay,
-                  opacity: 0.5,
-                }}
-              />
-            ))}
-
           {/* Abyss darkness vignette */}
           <div className="absolute inset-0 bg-gradient-to-t from-[#01050a] via-transparent to-transparent" />
+        </div>
+      )}
+
+      {/* 11. SAKURA SPRING TWILIGHT (Cherry Blossom) */}
+      {ambientTheme === 'cherry-blossom' && (
+        <div className="absolute inset-0 w-full h-full bg-[#180918] overflow-hidden">
+          {/* Soft Evening Sakura Sky Glow */}
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'radial-gradient(ellipse at 50% 30%, #3d1434 0%, #20081d 50%, #0d030c 100%)',
+            }}
+          />
+
+          {/* Luminous Soft Spring Moon Glow */}
+          <div
+            className="absolute top-12 right-1/4 w-72 h-72 rounded-full blur-[90px] opacity-40 pointer-events-none"
+            style={{
+              background: 'radial-gradient(circle, #fbcfe8 0%, #f472b6 40%, transparent 70%)',
+            }}
+          />
+
+          {/* Vignette */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#10040f]/90 via-transparent to-[#10040f]/40 pointer-events-none" />
+        </div>
+      )}
+
+      {/* 12. NEO TOKYO CYBER RAIN */}
+      {ambientTheme === 'neon-cyber-city' && (
+        <div className="absolute inset-0 w-full h-full bg-[#05010a] overflow-hidden">
+          {/* Cyber Neon Gradient Atmosphere */}
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'radial-gradient(ellipse at 50% 100%, #200535 0%, #0d0218 55%, #030007 100%)',
+            }}
+          />
+
+          {/* Holographic Skyline Grid Horizon */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-64 opacity-35 pointer-events-none"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(6, 182, 212, 0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(6, 182, 212, 0.4) 1px, transparent 1px)',
+              backgroundSize: '48px 48px',
+              perspective: '350px',
+              transform: 'rotateX(60deg)',
+              transformOrigin: 'bottom center',
+            }}
+          />
+
+          {/* Neon Light Flares */}
+          <div
+            className="absolute bottom-20 left-1/4 w-80 h-44 rounded-full blur-[80px] opacity-35"
+            style={{
+              background: 'radial-gradient(circle, #06b6d4 0%, transparent 70%)',
+              animation: 'cyberNeonPulse 5s ease-in-out infinite alternate',
+            }}
+          />
+          <div
+            className="absolute bottom-28 right-1/4 w-80 h-44 rounded-full blur-[80px] opacity-35"
+            style={{
+              background: 'radial-gradient(circle, #ec4899 0%, transparent 70%)',
+              animation: 'cyberNeonPulse 6s ease-in-out infinite alternate 1.5s',
+            }}
+          />
+        </div>
+      )}
+
+      {/* 13. GOLDEN AUTUMN FOREST */}
+      {ambientTheme === 'autumn-glade' && (
+        <div className="absolute inset-0 w-full h-full bg-[#150a04] overflow-hidden">
+          {/* Warm Amber Sunset Sky */}
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'radial-gradient(ellipse at 50% 20%, #3e1b09 0%, #240d04 55%, #0e0501 100%)',
+            }}
+          />
+
+          {/* Golden Twilight Horizon Glow */}
+          <div
+            className="absolute -bottom-16 left-0 right-0 h-80 blur-[90px] opacity-45 pointer-events-none"
+            style={{
+              background:
+                'radial-gradient(ellipse at 50% 100%, #ea580c 0%, #b45309 45%, transparent 75%)',
+            }}
+          />
+
+          <div className="absolute inset-0 bg-gradient-to-t from-[#100602]/85 via-transparent to-[#100602]/30 pointer-events-none" />
+        </div>
+      )}
+
+      {/* 14. ENCHANTED FIREFLY WOODS */}
+      {ambientTheme === 'emerald-enchanted' && (
+        <div className="absolute inset-0 w-full h-full bg-[#020b07] overflow-hidden">
+          {/* Deep Forest Canopy Radial */}
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'radial-gradient(ellipse at 50% 60%, #07281c 0%, #03140e 55%, #010805 100%)',
+            }}
+          />
+
+          {/* Mossy Atmospheric Canopy Fog */}
+          <div
+            className="absolute inset-0 w-full h-full opacity-25 pointer-events-none blur-3xl"
+            style={{
+              background:
+                'radial-gradient(circle at 30% 70%, #10b981 0%, transparent 50%), radial-gradient(circle at 75% 30%, #34d399 0%, transparent 50%)',
+              animation: 'fogDrift 24s ease-in-out infinite alternate',
+            }}
+          />
+        </div>
+      )}
+
+      {/* 15. SONORAN STARRY DESERT */}
+      {ambientTheme === 'desert-dusk' && (
+        <div className="absolute inset-0 w-full h-full bg-[#0d091e] overflow-hidden">
+          {/* Desert Dusk Violet-to-Plum Sky */}
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'linear-gradient(180deg, #090518 0%, #1a0f30 35%, #35153b 65%, #591b38 82%, #180718 100%)',
+            }}
+          />
+
+          {/* Desert Mountain Silhouettes Horizon */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-44 pointer-events-none"
+            style={{
+              background:
+                'polygon(0% 100%, 0% 65%, 15% 45%, 30% 60%, 48% 30%, 65% 55%, 82% 35%, 100% 50%, 100% 100%)',
+              clipPath:
+                'polygon(0% 100%, 0% 70%, 14% 50%, 28% 65%, 45% 35%, 62% 60%, 78% 38%, 90% 52%, 100% 45%, 100% 100%)',
+              backgroundColor: '#0c0514',
+            }}
+          />
         </div>
       )}
     </div>

@@ -220,6 +220,99 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     }
   }, [hoveredTask]);
 
+  // Top access bar hover detection: smooth and adaptive with gentle hysteresis
+  const [isPointerAtTop, setIsPointerAtTop] = useState<boolean>(false);
+  const headerRef = useRef<HTMLElement | null>(null);
+  const topBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const handlePointerMove = (e: MouseEvent) => {
+      // Trigger smoothly when pointer is moved up to top region (<= 75px)
+      const isNearTop = e.clientY <= 75;
+      const isOverHeader = headerRef.current ? headerRef.current.contains(e.target as Node) : false;
+
+      if (isNearTop || isOverHeader) {
+        if (topBarTimerRef.current) {
+          clearTimeout(topBarTimerRef.current);
+          topBarTimerRef.current = null;
+        }
+        setIsPointerAtTop(true);
+      } else if (e.clientY > 105) {
+        // Adaptive exit hysteresis: smoothly close with a gentle 160ms debounce
+        if (!topBarTimerRef.current && isPointerAtTop) {
+          topBarTimerRef.current = setTimeout(() => {
+            setIsPointerAtTop(false);
+            topBarTimerRef.current = null;
+          }, 160);
+        }
+      }
+    };
+
+    window.addEventListener('mousemove', handlePointerMove, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      if (topBarTimerRef.current) clearTimeout(topBarTimerRef.current);
+    };
+  }, [isPointerAtTop]);
+
+  // Zen Mode (30 seconds of inactivity when timer is running - adaptive exit)
+  const [isZenIdle, setIsZenIdle] = useState<boolean>(false);
+  const isZenEnabled = settings.idleMinimalMode !== false;
+
+  useEffect(() => {
+    if (!isRunning || !isZenEnabled || isTaskModalOpen) {
+      setIsZenIdle(false);
+      return;
+    }
+
+    let zenTimer: ReturnType<typeof setTimeout>;
+
+    const startZenTimer = () => {
+      clearTimeout(zenTimer);
+      zenTimer = setTimeout(() => {
+        setIsZenIdle(true);
+      }, 30000); // 30 seconds of being idle
+    };
+
+    let lastPos = { x: 0, y: 0 };
+    let hasPos = false;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!hasPos) {
+        lastPos = { x: e.clientX, y: e.clientY };
+        hasPos = true;
+        return;
+      }
+      const dist = Math.hypot(e.clientX - lastPos.x, e.clientY - lastPos.y);
+      // Adaptive wake-up: require real movement (>12px) before exiting Zen idle to prevent micro-jitter
+      if (dist > 12) {
+        lastPos = { x: e.clientX, y: e.clientY };
+        setIsZenIdle(false);
+        startZenTimer();
+      }
+    };
+
+    const handleDiscreteActivity = () => {
+      setIsZenIdle(false);
+      startZenTimer();
+    };
+
+    startZenTimer();
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    window.addEventListener('mousedown', handleDiscreteActivity, { passive: true });
+    window.addEventListener('keydown', handleDiscreteActivity, { passive: true });
+    window.addEventListener('touchstart', handleDiscreteActivity, { passive: true });
+
+    return () => {
+      clearTimeout(zenTimer);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mousedown', handleDiscreteActivity);
+      window.removeEventListener('keydown', handleDiscreteActivity);
+      window.removeEventListener('touchstart', handleDiscreteActivity);
+    };
+  }, [isRunning, isZenEnabled, isTaskModalOpen]);
+
   // Idle timer: hide non-essential elements when user is inactive, keep clock, counter, controls & tasks visible
   useEffect(() => {
     if (isTaskModalOpen) {
@@ -430,18 +523,35 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       : Math.max(36, Math.round(circleDiameter * 0.22));
   const digitFontSize = Math.min(rawFontSize, maxSafeFontSize);
 
-  // Screen resize tracking to only apply horizontal shift when in side-by-side row layout (lg: breakpoint)
+  // Screen resize tracking for desktop layout and full-screen perimeter ring attached to corners
+  const [screenSize, setScreenSize] = useState(() => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1280,
+    height: typeof window !== 'undefined' ? window.innerHeight : 800,
+  }));
   const [isLgScreen, setIsLgScreen] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   );
 
   useEffect(() => {
     const handleResize = () => {
+      setScreenSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
       setIsLgScreen(window.innerWidth >= 1024);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Full-screen perimeter calculations for the Zen Idle screen (ring attached to screen corners)
+  const screenStrokeWidth = 5;
+  const screenInset = 3;
+  const screenRectWidth = Math.max(10, screenSize.width - screenStrokeWidth);
+  const screenRectHeight = Math.max(10, screenSize.height - screenStrokeWidth);
+  const screenPerimeter = 2 * (screenRectWidth + screenRectHeight);
+  const clampedProgress = Math.max(0, Math.min(1, progress));
+  const screenStrokeDashoffset = screenPerimeter * (1 - clampedProgress);
 
   // Proportional left shift for the timer circle on desktop, so larger circle sizes never look clumsy or crowded against controls
   const timerLeftShift = isLgScreen
@@ -552,17 +662,37 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         />
       )}
 
-      {/* Top Header Bar (Disappears when left idle) */}
+      {/* Top Hover Sensor Trigger Zone: Ensures access bar drops smoothly as soon as pointer moves to the top edge */}
+      <div
+        className="fixed top-0 left-0 right-0 h-7 z-40 pointer-events-auto"
+        onMouseEnter={() => {
+          if (topBarTimerRef.current) {
+            clearTimeout(topBarTimerRef.current);
+            topBarTimerRef.current = null;
+          }
+          setIsPointerAtTop(true);
+        }}
+      />
+
+      {/* Top Header Bar (Drops smoothly down when pointer moves up) */}
       <header
+        ref={headerRef}
         id="pomodoro-header"
-        className={`sticky top-0 left-0 right-0 px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between z-20 border-b backdrop-blur-md transition-all duration-700 ease-in-out ${
-          isIdle
-            ? 'opacity-0 -translate-y-full pointer-events-none'
-            : 'opacity-100 translate-y-0 pointer-events-auto'
+        onMouseEnter={() => {
+          if (topBarTimerRef.current) {
+            clearTimeout(topBarTimerRef.current);
+            topBarTimerRef.current = null;
+          }
+          setIsPointerAtTop(true);
+        }}
+        className={`fixed top-0 left-0 right-0 px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between z-50 border-b backdrop-blur-md transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isPointerAtTop
+            ? 'translate-y-0 pointer-events-auto shadow-2xl'
+            : '-translate-y-full pointer-events-none'
         } ${
           resolvedTheme.isDark
-            ? 'border-neutral-900/80 bg-neutral-950/60 text-white'
-            : 'border-neutral-200/80 bg-white/70 text-neutral-900'
+            ? 'border-neutral-900/80 bg-neutral-950/85 text-white'
+            : 'border-neutral-200/80 bg-white/90 text-neutral-900'
         }`}
       >
         <div className="flex items-center gap-3">
@@ -670,19 +800,109 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         </div>
       </header>
 
-      {/* Main Pomodoro & Controls Container */}
-      <main
-        className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col items-center justify-center z-10 transition-all duration-500 ${
-          isIdle ? 'py-2 sm:py-3' : 'pt-2 sm:pt-3 pb-6 sm:pb-8'
+      {/* Zen Idle Focus Mode: Attached to the Corners of the Screen, Clean Progress Ring, Only Centered Digits (Smooth Adaptive Transition) */}
+      <div
+        id="pomodoro-zen-mode"
+        aria-hidden={!isZenIdle}
+        className={`fixed inset-0 z-30 pointer-events-none flex items-center justify-center transition-[transform,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform] ${
+          isZenIdle
+            ? 'opacity-100 scale-100 pointer-events-auto'
+            : 'opacity-0 scale-[1.03] pointer-events-none'
         }`}
       >
-        {/* Phase Pill Selector */}
+        {/* Screen-Attached Perimeter Ring (Lighted up all the time, visible moving progress, reduced glare) */}
+        <svg
+          className="fixed inset-0 w-full h-full pointer-events-none z-20"
+          viewBox={`0 0 ${screenSize.width} ${screenSize.height}`}
+        >
+          {/* Subtle background border track along screen edges */}
+          <rect
+            x={screenInset}
+            y={screenInset}
+            width={screenRectWidth}
+            height={screenRectHeight}
+            fill="none"
+            stroke={resolvedTheme.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'}
+            strokeWidth={screenStrokeWidth}
+          />
+
+          {/* Base Perimeter Ring (Lighted up all the time around all 4 corners, clean subtle luminescence) */}
+          <rect
+            x={screenInset}
+            y={screenInset}
+            width={screenRectWidth}
+            height={screenRectHeight}
+            fill="none"
+            stroke={currentTheme.ringColor}
+            strokeWidth={3}
+            strokeOpacity={0.32}
+            className="transition-all duration-1000 ease-linear"
+            style={{
+              filter: `drop-shadow(0 0 4px ${currentTheme.ringColor}50)`,
+            }}
+          />
+
+          {/* Active Progress Stroke (Bold 5.5px stroke with refined, comfortable brightness) */}
+          <rect
+            x={screenInset}
+            y={screenInset}
+            width={screenRectWidth}
+            height={screenRectHeight}
+            fill="none"
+            stroke={currentTheme.ringColor}
+            strokeWidth={screenStrokeWidth + 0.5}
+            strokeDasharray={screenPerimeter}
+            strokeDashoffset={screenStrokeDashoffset}
+            strokeLinecap="round"
+            className="transition-[stroke-dashoffset] duration-1000 ease-linear"
+            style={{
+              filter: `drop-shadow(0 0 6px ${currentTheme.ringColor}aa) drop-shadow(0 0 15px ${currentTheme.ringColor}55)`,
+            }}
+          />
+        </svg>
+
+        {/* Center of Screen: ONLY the timer digits (no badges, no task info, no buttons) */}
+        <div
+          id="pomodoro-zen-digits"
+          className="font-black tracking-tight flex items-center justify-center select-none text-center tabular-nums leading-none z-30 transition-[transform,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{
+            fontFamily: selectedFont.cssFamily,
+            color: resolvedTheme.textColor,
+            fontSize: 'clamp(6.5rem, 20vw, 17rem)',
+            textShadow: resolvedTheme.enableGlow
+              ? `0 0 35px ${currentTheme.accent}70, 0 0 70px ${currentTheme.accent}30`
+              : undefined,
+          }}
+        >
+          <span>{formattedMinutes}</span>
+          <span className="opacity-60 mx-1 sm:mx-2 animate-pulse">:</span>
+          <span>{formattedSeconds}</span>
+        </div>
+      </div>
+
+      {/* Main Pomodoro & Controls Container (Smooth adaptive transition, subtle downward shift for top bar) */}
+      <main
+        className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col items-center justify-center z-10 transition-[transform,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform] ${
+          isZenIdle
+            ? 'opacity-0 scale-[0.97] pointer-events-none'
+            : 'opacity-100 scale-100 pointer-events-auto'
+        } ${
+          isPointerAtTop
+            ? 'pt-16 sm:pt-18 translate-y-2'
+            : 'pt-4 sm:pt-6 translate-y-0'
+        } ${
+          isIdle ? 'py-2 sm:py-3' : 'pb-6 sm:pb-8'
+        }`}
+      >
+        {/* Phase Pill Selector (Subtle shift to stay comfortably visible below incoming top bar) */}
         <div
           id="pomodoro-phase-pills"
-          className={`flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-inner transition-all duration-700 ease-in-out shrink-0 ${
-            isIdle
+          className={`flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-inner transition-all duration-300 ease-out shrink-0 ${
+            isPointerAtTop ? 'mt-1' : 'mt-0'
+          } ${
+            isZenIdle && !isPointerAtTop
               ? 'opacity-0 -translate-y-4 pointer-events-none max-h-0 mb-0 py-0 border-transparent overflow-hidden'
-              : 'opacity-100 translate-y-0 pointer-events-auto max-h-16 mb-3 sm:mb-4'
+              : 'opacity-100 translate-y-0 pointer-events-auto max-h-16 mb-4 sm:mb-6'
           }`}
           style={{
             backgroundColor: resolvedTheme.cardBg,
@@ -702,7 +922,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
               color: phase === 'work' ? (resolvedTheme.isDark ? '#000000' : '#ffffff') : resolvedTheme.textColor,
             }}
           >
-            Focus ({settings.workMinutes}m)
+            Focus
           </button>
 
           <button
@@ -718,7 +938,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
               color: phase === 'shortBreak' ? (resolvedTheme.isDark ? '#000000' : '#ffffff') : resolvedTheme.textColor,
             }}
           >
-            Short Break ({settings.shortBreakMinutes}m)
+            Short Break
           </button>
 
           <button
@@ -734,7 +954,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
               color: phase === 'longBreak' ? (resolvedTheme.isDark ? '#000000' : '#ffffff') : resolvedTheme.textColor,
             }}
           >
-            Long Break ({settings.longBreakMinutes}m)
+            Long Break
           </button>
         </div>
 
@@ -743,14 +963,14 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           {/* 1. Timer Circle (Centrally aligned with square aspect ratio) */}
           <div
             id="pomodoro-timer-circle"
-            className="relative flex items-center justify-center transition-all duration-300 shrink-0 aspect-square"
+            className="relative flex items-center justify-center shrink-0 aspect-square transition-all duration-700 ease-in-out"
             style={{
               width: circleDiameter,
               height: circleDiameter,
               maxWidth: 'min(94vw, calc(100vh - 140px))',
               maxHeight: 'min(94vw, calc(100vh - 140px))',
               aspectRatio: '1 / 1',
-              transform: timerLeftShift > 0 ? `translateX(-${timerLeftShift}px)` : undefined,
+              transform: timerLeftShift > 0 && !isZenIdle ? `translateX(-${timerLeftShift}px)` : undefined,
             }}
           >
             <svg
@@ -892,92 +1112,19 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                   <span className="opacity-60 mx-0.5 select-none">:</span>
                   <span className="tabular-nums">{formattedSeconds}</span>
                 </div>
-
-                {/* Preset Timers Quick-Start Options:
-                    - Show preset timer options only when the size of the clock is increased (circleDiameter > 340)
-                    - When kept small (circleDiameter <= 340), remove preset clock options
-                    - When timer is started (isRunning), show only countdown in this widget */}
-                {!isRunning && circleDiameter > 340 && (
-                  <div
-                    id="pomodoro-clock-preset-timers"
-                    className="flex items-center justify-center gap-1.5 mt-2 z-20 pointer-events-auto select-none"
-                  >
-                    {[
-                      { label: '5m', minutes: 5 },
-                      { label: '15m', minutes: 15 },
-                      { label: '25m', minutes: 25 },
-                      { label: '50m', minutes: 50 },
-                    ].map((preset) => {
-                      const isCurrent = settings.workMinutes === preset.minutes;
-                      return (
-                        <button
-                          key={preset.minutes}
-                          id={`pomo-clock-preset-${preset.minutes}m-btn`}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onUpdateSettings?.({
-                              workMinutes: preset.minutes,
-                              presetTimerDefault: preset.minutes,
-                            });
-                            timer.startPresetTimer(preset.minutes, 'work');
-                          }}
-                          className={`apple-hover px-2 sm:px-2.5 py-1 rounded-lg text-xs font-mono font-bold tracking-tight border cursor-pointer transition-all active:scale-95 shadow-sm ${
-                            isCurrent
-                              ? 'border-amber-400 bg-amber-400/25 text-amber-300 ring-1 ring-amber-400/50'
-                              : 'border-white/15 hover:border-amber-400/60 bg-black/40 hover:bg-black/70 text-neutral-300 hover:text-white'
-                          }`}
-                          title={`Quick-launch ${preset.minutes}m focus session`}
-                        >
-                          {preset.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Quick Adjust Buttons (Only visible when NOT running to preserve countdown purity when started) */}
-                {!isRunning && (
-                  <div
-                    className={`flex items-center gap-2 mt-1.5 transition-all duration-500 ${
-                      isIdle ? 'opacity-0 pointer-events-none' : 'opacity-70 hover:opacity-100'
-                    }`}
-                  >
-                    <button
-                      id="pomo-minus-time-btn"
-                      onClick={handleMinusMinute}
-                      className="p-1 rounded-lg border text-xs cursor-pointer transition-colors"
-                      style={{
-                        backgroundColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                        borderColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
-                        color: resolvedTheme.textColor,
-                      }}
-                      title="-1 minute"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="text-[10px] font-mono text-neutral-500">±1m</span>
-                    <button
-                      id="pomo-plus-time-btn"
-                      onClick={handleAddMinute}
-                      className="p-1 rounded-lg border text-xs cursor-pointer transition-colors"
-                      style={{
-                        backgroundColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                        borderColor: resolvedTheme.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
-                        color: resolvedTheme.textColor,
-                      }}
-                      title="+1 minute"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
 
-          {/* 2. Side Section: Controls and Tasks Columns Side-by-Side */}
-          <div className="flex flex-row items-stretch gap-4 sm:gap-5">
+          {/* 2. Side Section: Controls and Tasks Columns Side-by-Side (Smooth Gradual Transition) */}
+          <div
+            id="pomo-side-section"
+            className={`flex flex-row items-stretch gap-4 sm:gap-5 transition-all duration-700 ease-in-out ${
+              isZenIdle
+                ? 'opacity-0 scale-90 translate-x-6 pointer-events-none select-none'
+                : 'opacity-100 scale-100 translate-x-0 pointer-events-auto'
+            }`}
+          >
             {/* Column A: Big Counter & Vertical Controls */}
             <div
               id="pomo-right-panel"

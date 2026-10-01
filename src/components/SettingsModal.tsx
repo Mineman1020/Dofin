@@ -40,11 +40,9 @@ import {
   Cpu,
   Compass,
   Maximize2,
+  MapPin,
+  Search,
   CloudSun,
-  Target,
-  StickyNote,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 import {
   ClockSettings,
@@ -54,20 +52,20 @@ import {
   SoundAlertChoice,
   AmbientThemeId,
   WallpaperMode,
-  ClockStyle,
   ClockColorMode,
   BatteryWidgetStyle,
   StopwatchWidgetStyle,
+  WeatherWidgetStyle,
   WidgetTheme,
 } from '../types';
 import {
   THEME_PRESETS,
   FONT_OPTIONS,
+  FONT_OPTICAL_SCALES,
   SOUND_ALERT_OPTIONS,
   SAMPLE_QUOTES,
   POMODORO_THEME_PRESETS,
   AMBIENT_THEMES,
-  CLOCK_STYLE_OPTIONS,
   getResolvedPomodoroTheme,
   getMaxPomodoroFontSize,
 } from '../utils/constants';
@@ -77,12 +75,7 @@ import {
   playTickSound,
 } from '../utils/audio';
 import { AmbientBackground } from './AmbientBackground';
-import { GRADIENT_PRESETS, getClockDigitTextStyle, getMatchedBackgroundStyle, getClockResolvedColors } from '../utils/gradientPresets';
-import { FlipClock } from './clock-styles/FlipClock';
-import { AnalogClock } from './clock-styles/AnalogClock';
-import { SevenSegmentClock } from './clock-styles/SevenSegmentClock';
-import { CyberpunkClock } from './clock-styles/CyberpunkClock';
-import { RadialArcClock } from './clock-styles/RadialArcClock';
+import { GRADIENT_PRESETS, getClockDigitTextStyle, getMatchedBackgroundStyle } from '../utils/gradientPresets';
 import {
   saveWallpaperItem,
   getWallpaperItem,
@@ -109,34 +102,6 @@ interface SettingsModalProps {
 }
 
 type TabKey = 'clock' | 'pomodoro' | 'general';
-
-/**
- * Dynamic scaling utility for the live preview container in SettingsModal:
- * Detects when a large analog clock (or large radial gauge/oversized digit style) is selected
- * and automatically applies a 50% scale transformation, ensuring the settings controls remain accessible.
- */
-export function getLivePreviewDynamicScale(settings: ClockSettings, activeTab: string) {
-  const isLargeAnalog =
-    activeTab === 'clock' &&
-    (settings.clockStyle === 'analog' ||
-      settings.clockStyle === 'arc-radial' ||
-      settings.clockStyle === 'neon-cyber' ||
-      settings.digitSize === 'huge' ||
-      settings.digitSize === 'fill');
-
-  // When large analog clock is selected, automatically apply 50% scale transformation
-  const scaleRatio = isLargeAnalog ? 0.50 : 0.65;
-
-  return {
-    isLargeAnalog,
-    scaleTransform: `scale(${scaleRatio})`,
-    scaleRatio,
-    containerHeightClass: isLargeAnalog
-      ? 'h-[110px] sm:h-[120px] min-h-[100px] max-h-[125px]'
-      : 'h-[90px] sm:h-[98px] min-h-[85px] max-h-[104px]',
-    badgeInfo: isLargeAnalog ? '50% Auto-Scaled Preview' : null,
-  };
-}
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -185,7 +150,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [segmentSensitivity, setSegmentSensitivity] = useState<'low' | 'balanced' | 'high'>('balanced');
   const [previewWallpaperUrl, setPreviewWallpaperUrl] = useState<string | null>(null);
   const [isDraggingPhoto, setIsDraggingPhoto] = useState<boolean>(false);
-  const [isPreviewCollapsed, setIsPreviewCollapsed] = useState<boolean>(false);
+
+  // Weather Widget Location & Search State
+  const [weatherLocationInput, setWeatherLocationInput] = useState<string>(
+    clockSettings.weatherLocation || 'San Francisco, CA'
+  );
+  const [isSearchingLocation, setIsSearchingLocation] = useState<boolean>(false);
+  const [weatherStatusMsg, setWeatherStatusMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (clockSettings.weatherLocation) {
+      setWeatherLocationInput(clockSettings.weatherLocation);
+    }
+  }, [clockSettings.weatherLocation]);
+
+  const handleUpdateWeatherLocation = async (customCity?: string) => {
+    const loc = customCity || weatherLocationInput.trim();
+    if (!loc) return;
+    setIsSearchingLocation(true);
+    setWeatherStatusMsg(`Locating "${loc}"...`);
+    try {
+      const geoRes = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+          loc
+        )}&count=1&language=en&format=json`
+      );
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        if (geoData.results && geoData.results.length > 0) {
+          const first = geoData.results[0];
+          const resolvedName = `${first.name}${first.admin1 ? `, ${first.admin1}` : ''}${
+            first.country ? `, ${first.country}` : ''
+          }`;
+          setWeatherLocationInput(resolvedName);
+          onUpdateClockSettings({
+            weatherLocation: resolvedName,
+            weatherLatitude: first.latitude,
+            weatherLongitude: first.longitude,
+            showWeatherWidget: true,
+          });
+          setWeatherStatusMsg(`Weather set to ${first.name}!`);
+          setTimeout(() => setWeatherStatusMsg(null), 3500);
+          return;
+        }
+      }
+      onUpdateClockSettings({
+        weatherLocation: loc,
+        showWeatherWidget: true,
+      });
+      setWeatherStatusMsg(`Location set to "${loc}"!`);
+      setTimeout(() => setWeatherStatusMsg(null), 3500);
+    } catch {
+      onUpdateClockSettings({
+        weatherLocation: loc,
+        showWeatherWidget: true,
+      });
+      setWeatherStatusMsg(`Saved location: ${loc}`);
+      setTimeout(() => setWeatherStatusMsg(null), 3500);
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
 
   const fileInputSingleRef = useRef<HTMLInputElement | null>(null);
   const fileInputSlideshowRef = useRef<HTMLInputElement | null>(null);
@@ -540,14 +565,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     ? '#0f111a'
     : '#f7f5f0';
 
-  const resolvedColors = getClockResolvedColors(
-    clockSettings,
-    isAmbientActive ? activeAmbientTheme.textColor : currentTheme.textColor,
-    isAmbientActive ? activeAmbientTheme.accentColor : currentTheme.accentColor
-  );
+  const activeTextColor = isAmbientActive
+    ? activeAmbientTheme.textColor
+    : clockSettings.themeId === 'custom' && clockSettings.customTextColor
+    ? clockSettings.customTextColor
+    : currentTheme.textColor;
 
-  const activeTextColor = resolvedColors.textColor;
-  const activeAccentColor = resolvedColors.accentColor;
+  const activeAccentColor = isAmbientActive
+    ? activeAmbientTheme.accentColor
+    : clockSettings.themeId === 'custom' && clockSettings.customAccentColor
+    ? clockSettings.customAccentColor
+    : currentTheme.accentColor;
 
   // Handle custom audio file uploads
   const handleAudioUpload = (
@@ -590,7 +618,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const matchedBg = getMatchedBackgroundStyle(clockSettings, activeTextColor);
   const previewTime = new Date();
-  const previewDynamicScale = getLivePreviewDynamicScale(clockSettings, activeTab);
 
   return (
     <div
@@ -693,165 +720,111 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* LIVE REAL-TIME PREVIEW CONTAINER */}
-        <div className="px-6 pt-3 pb-2.5 bg-neutral-950/60 border-b border-neutral-800/80">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-mono tracking-wider text-amber-400 uppercase flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Live Visual Preview</span>
-            </span>
-            <div className="flex items-center gap-2">
-              {previewDynamicScale.badgeInfo && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono font-medium border border-amber-500/30">
-                  {previewDynamicScale.badgeInfo}
+        <div className="px-6 pt-4 pb-3 bg-neutral-950/60 border-b border-neutral-800/80">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-mono tracking-wider text-amber-400 uppercase flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Live Visual Preview (Updates Instantly)</span>
                 </span>
-              )}
-              <span className="text-[10px] text-neutral-400 font-mono hidden sm:inline truncate max-w-xs">
-                {activeTab === 'clock'
-                  ? `${CLOCK_STYLE_OPTIONS.find((s) => s.id === (clockSettings.clockStyle || 'modern'))?.name || 'Modern'} • ${selectedFont.name}`
-                  : activeTab === 'pomodoro'
-                  ? `${POMODORO_THEME_PRESETS.find((p) => p.id === (pomodoroSettings.themeId || 'classic-tomato'))?.name || 'Custom'}`
-                  : `${userName || 'Friend'}`}
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsPreviewCollapsed(!isPreviewCollapsed)}
-                className="flex items-center gap-1 text-[10px] text-amber-300 hover:text-amber-200 font-mono px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 transition-colors cursor-pointer"
-                title={isPreviewCollapsed ? 'Expand Preview' : 'Minimize Preview to view settings'}
+                <span className="text-[10px] text-neutral-400 font-mono">
+                  {activeTab === 'clock'
+                    ? `${
+                        clockSettings.colorMode === 'gradient'
+                          ? GRADIENT_PRESETS.find((p) => p.id === (clockSettings.gradientPresetId || 'sunset-blaze'))?.name || 'Gradient'
+                          : clockSettings.colorMode === 'custom-gradient'
+                          ? 'Custom Dual Blend'
+                          : isAmbientActive
+                          ? activeAmbientTheme.name
+                          : currentTheme.name
+                      } • Font: ${selectedFont.name}`
+                    : activeTab === 'pomodoro'
+                    ? `Theme: ${POMODORO_THEME_PRESETS.find((p) => p.id === (pomodoroSettings.themeId || 'classic-tomato'))?.name || 'Custom'} • Font: ${selectedPomoFont.name}`
+                    : `Profile: ${userName || 'Friend'}`}
+                </span>
+              </div>
+
+              <div
+                id="settings-live-preview-box"
+                className="w-full rounded-2xl p-4 transition-all duration-300 border border-neutral-700/80 shadow-inner flex flex-col items-center justify-center text-center overflow-hidden min-h-[140px] relative"
+                style={{
+                  backgroundColor:
+                    activeTab === 'pomodoro'
+                      ? resolvedPomoTheme.bg
+                      : matchedBg?.backgroundColor
+                      ? matchedBg.backgroundColor
+                      : isAmbientActive
+                      ? undefined
+                      : activeBg,
+                  backgroundImage:
+                    activeTab === 'pomodoro'
+                      ? undefined
+                      : matchedBg?.backgroundImage
+                      ? matchedBg.backgroundImage
+                      : activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme')
+                      ? activeAmbientTheme.bgGradient
+                      : undefined,
+                  color: activeTab === 'pomodoro' ? resolvedPomoTheme.textColor : activeTextColor,
+                  filter: activeTab === 'clock' ? `brightness(${clockSettings.brightness}%)` : 'none',
+                }}
               >
-                {isPreviewCollapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
-                <span>{isPreviewCollapsed ? 'Show Preview' : 'Compact View'}</span>
-              </button>
-            </div>
-          </div>
-
-          {!isPreviewCollapsed && (
-            <div
-              id="settings-live-preview-box"
-              className={`w-full rounded-2xl p-2 transition-all duration-300 border border-neutral-700/80 shadow-inner flex flex-col items-center justify-center text-center overflow-hidden ${previewDynamicScale.containerHeightClass} relative`}
-              style={{
-                backgroundColor:
-                  activeTab === 'pomodoro'
-                    ? resolvedPomoTheme.bg
-                    : matchedBg?.backgroundColor
-                    ? matchedBg.backgroundColor
-                    : isAmbientActive
-                    ? undefined
-                    : activeBg,
-                backgroundImage:
-                  activeTab === 'pomodoro'
-                    ? undefined
-                    : matchedBg?.backgroundImage
-                    ? matchedBg.backgroundImage
-                    : activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme')
-                    ? activeAmbientTheme.bgGradient
-                    : undefined,
-                color: activeTab === 'pomodoro' ? resolvedPomoTheme.textColor : activeTextColor,
-                filter: activeTab === 'clock' ? `brightness(${clockSettings.brightness}%)` : 'none',
-              }}
-            >
-              {/* Custom Photo Wallpaper Preview Image */}
-              {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
-                <img
-                  src={previewWallpaperUrl}
-                  alt="Wallpaper preview"
-                  className="absolute inset-0 w-full h-full object-cover pointer-events-none rounded-2xl z-0"
-                  style={{
-                    filter: clockSettings.wallpaperBlur ? `blur(${clockSettings.wallpaperBlur}px)` : undefined,
-                  }}
-                />
-              )}
-
-              {/* Wallpaper Dimmer Overlay for Preview */}
-              {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
-                <div
-                  className="absolute inset-0 bg-black pointer-events-none rounded-2xl z-[1]"
-                  style={{ opacity: (clockSettings.wallpaperOpacity ?? 25) / 100 }}
-                />
-              )}
-
-              {/* Ambient Background layer in preview */}
-              {activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme') && (
-                <AmbientBackground
-                  ambientTheme={clockSettings.ambientTheme}
-                  particles={clockSettings.ambientParticles !== false}
-                  className="rounded-2xl"
-                />
-              )}
-              {activeTab === 'pomodoro' && isPomoAmbientActive && (
-                <AmbientBackground
-                  ambientTheme={pomodoroSettings.ambientTheme}
-                  particles={pomodoroSettings.ambientParticles !== false}
-                  pomodoroPhase={previewPomoPhase}
-                  syncPhase={pomodoroSettings.ambientPhaseSync !== false}
-                  className="rounded-2xl"
-                />
-              )}
-
-              {activeTab === 'clock' ? (
-                <div className="relative z-10 w-full flex flex-col items-center justify-center">
-                  {/* Clock Style Live Preview Renderer - Auto 50% scale transformation for large analog clocks */}
-                  <div
-                    className="transform origin-center max-w-full flex items-center justify-center transition-all duration-200 my-0"
+                {/* Custom Photo Wallpaper Preview Image */}
+                {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
+                  <img
+                    src={previewWallpaperUrl}
+                    alt="Wallpaper preview"
+                    className="absolute inset-0 w-full h-full object-cover pointer-events-none rounded-2xl z-0"
                     style={{
-                      transform: previewDynamicScale.scaleTransform,
-                      transformOrigin: 'center center',
+                      filter: clockSettings.wallpaperBlur ? `blur(${clockSettings.wallpaperBlur}px)` : undefined,
                     }}
-                  >
-                    {clockSettings.clockStyle === 'flip' ? (
-                      <FlipClock
-                        hoursStr="10"
-                        minutesStr="45"
-                        secondsStr="22"
-                        ampm="AM"
-                        settings={clockSettings}
-                        resolvedTextColor={activeTextColor}
-                        resolvedAccentColor={activeAccentColor}
-                        isLight={!isDarkMode && !currentTheme.isDark}
-                      />
-                    ) : clockSettings.clockStyle === 'analog' ? (
-                      <AnalogClock
-                        date={previewTime}
-                        ampm="AM"
-                        settings={clockSettings}
-                        resolvedTextColor={activeTextColor}
-                        resolvedAccentColor={activeAccentColor}
-                        isLight={!isDarkMode && !currentTheme.isDark}
-                      />
-                    ) : clockSettings.clockStyle === 'seven-segment' ? (
-                      <SevenSegmentClock
-                        hoursStr="10"
-                        minutesStr="45"
-                        secondsStr="22"
-                        ampm="AM"
-                        settings={clockSettings}
-                        resolvedAccentColor={activeAccentColor}
-                      />
-                    ) : clockSettings.clockStyle === 'neon-cyber' ? (
-                      <CyberpunkClock
-                        hoursStr="10"
-                        minutesStr="45"
-                        secondsStr="22"
-                        ampm="AM"
-                        settings={clockSettings}
-                        resolvedAccentColor={activeAccentColor}
-                        digitTextStyle={getClockDigitTextStyle(clockSettings, activeTextColor)}
-                      />
-                    ) : clockSettings.clockStyle === 'arc-radial' ? (
-                      <RadialArcClock
-                        date={previewTime}
-                        hoursStr="10"
-                        minutesStr="45"
-                        secondsStr="22"
-                        ampm="AM"
-                        settings={clockSettings}
-                        resolvedTextColor={activeTextColor}
-                        resolvedAccentColor={activeAccentColor}
-                        isLight={!isDarkMode && !currentTheme.isDark}
-                      />
-                    ) : (
-                      /* Modern Typographic Clock (Default) with Text Gradients */
+                  />
+                )}
+
+                {/* Wallpaper Dimmer Overlay for Preview */}
+                {activeTab === 'clock' && clockSettings.wallpaperMode === 'image' && previewWallpaperUrl && (
+                  <div
+                    className="absolute inset-0 bg-black pointer-events-none rounded-2xl z-[1]"
+                    style={{ opacity: (clockSettings.wallpaperOpacity ?? 25) / 100 }}
+                  />
+                )}
+
+                {/* Ambient Background layer in preview */}
+                {activeTab === 'clock' && isAmbientActive && (!clockSettings.wallpaperMode || clockSettings.wallpaperMode === 'theme') && (
+                  <AmbientBackground
+                    ambientTheme={clockSettings.ambientTheme}
+                    particles={clockSettings.ambientParticles !== false}
+                    className="rounded-2xl"
+                  />
+                )}
+                {activeTab === 'pomodoro' && isPomoAmbientActive && (
+                  <AmbientBackground
+                    ambientTheme={pomodoroSettings.ambientTheme}
+                    particles={pomodoroSettings.ambientParticles !== false}
+                    pomodoroPhase={previewPomoPhase}
+                    syncPhase={pomodoroSettings.ambientPhaseSync !== false}
+                    className="rounded-2xl"
+                  />
+                )}
+
+                {activeTab === 'clock' ? (
+                  <div className="relative z-10 w-full flex flex-col items-center py-2">
+                    {(clockSettings.showDayOfWeek || clockSettings.showDate) && (
+                      <div className="text-[11px] tracking-wider uppercase opacity-75 mb-2 font-sans">
+                        {clockSettings.showDayOfWeek && <span>Thursday </span>}
+                        {clockSettings.showDayOfWeek && clockSettings.showDate && <span>• </span>}
+                        {clockSettings.showDate && <span>September 10, 2026</span>}
+                      </div>
+                    )}
+
+                    {/* Clock Typographic Live Preview with Font Optical Normalization */}
+                    <div
+                      className="transform scale-[0.72] sm:scale-85 origin-center my-1 max-w-full flex items-center justify-center transition-all duration-200"
+                      style={{
+                        transform: `scale(${(0.85 * (FONT_OPTICAL_SCALES[clockSettings.fontFamily] || 1.0)).toFixed(3)})`,
+                        transformOrigin: 'center center',
+                      }}
+                    >
                       <div
-                        className="text-3xl sm:text-4xl tracking-wider flex items-baseline justify-center transition-all duration-200"
+                        className="text-4xl sm:text-5xl tracking-wider flex items-baseline justify-center transition-all duration-200"
                         style={{
                           fontFamily: selectedFont.cssFamily,
                           ...getClockDigitTextStyle(clockSettings, activeTextColor),
@@ -866,10 +839,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span>10:45</span>
                         {clockSettings.showSeconds && (
                           <span
-                            className="text-xl opacity-75 ml-1"
+                            className="text-2xl opacity-75 ml-1"
                             style={
                               clockSettings.colorMode && clockSettings.colorMode !== 'solid'
-                                ? getClockDigitTextStyle(clockSettings, activeAccentColor)
+                                ? getClockDigitTextStyle(clockSettings, activeTextColor)
                                 : { color: activeAccentColor }
                             }
                           >
@@ -878,17 +851,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         )}
                         {clockSettings.showAmPm && clockSettings.timeFormat === '12h' && (
                           <span
-                            className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-current ml-2"
+                            className="text-xs ml-2 font-sans font-semibold uppercase px-1.5 py-0.5 rounded border border-current"
                             style={{ color: activeAccentColor }}
                           >
                             AM
                           </span>
                         )}
                       </div>
+                    </div>
+
+                    {clockSettings.showQuote && clockSettings.quoteText && (
+                      <div className="text-[11px] opacity-75 italic mt-2 max-w-sm truncate font-sans">
+                        &ldquo;{clockSettings.quoteText}&rdquo;
+                      </div>
                     )}
                   </div>
-                </div>
-              ) : activeTab === 'pomodoro' ? (
+                ) : activeTab === 'pomodoro' ? (
               <div className="w-full flex flex-col items-center gap-3">
                 {/* Interactive Phase Preview Switcher */}
                 <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/25 border border-white/10">
@@ -1056,7 +1034,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
           </div>
-          )}
         </div>
 
         {/* Tab Content Body */}
@@ -1064,258 +1041,269 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 1: CLOCK & APPEARANCE */}
           {activeTab === 'clock' && (
             <div className="space-y-6">
-              {/* 1. CLOCK DESIGNS & STYLES (Requirement 1) */}
-              <div className="space-y-4 p-4 rounded-2xl bg-neutral-950/80 border border-amber-500/25 shadow-xl">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
-                  <div>
-                    <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-amber-400" />
-                      <span>Clock Designs & Visual Styles</span>
-                    </label>
-                    <p className="text-xs text-neutral-400 mt-0.5">
-                      Choose between 6 distinct physical, mechanical, and futuristic clock styles.
-                    </p>
-                  </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 self-start sm:self-auto">
-                    {CLOCK_STYLE_OPTIONS.find((s) => s.id === (clockSettings.clockStyle || 'modern'))?.name || 'Modern Minimal'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {CLOCK_STYLE_OPTIONS.map((style) => {
-                    const isSelected = (clockSettings.clockStyle || 'modern') === style.id;
-                    return (
-                      <button
-                        key={style.id}
-                        id={`clock-style-${style.id}`}
-                        type="button"
-                        onClick={() => onUpdateClockSettings({ clockStyle: style.id })}
-                        className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between min-h-[96px] cursor-pointer group ${
-                          isSelected
-                            ? 'border-amber-400 bg-amber-500/15 ring-2 ring-amber-400/30 shadow-md'
-                            : 'border-neutral-800 hover:border-neutral-700 bg-neutral-900/60'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between w-full mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-neutral-100 group-hover:text-amber-300 transition-colors">
-                              {style.name}
-                            </span>
-                            {style.badge && (
-                              <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                {style.badge}
-                              </span>
-                            )}
-                          </div>
-                          {isSelected && (
-                            <span className="w-4 h-4 rounded-full bg-amber-400 text-neutral-950 flex items-center justify-center shrink-0">
-                              <Check className="w-2.5 h-2.5 stroke-[3]" />
-                            </span>
-                          )}
-                        </div>
-
-                        <span className="text-[11px] text-neutral-400 line-clamp-2 leading-relaxed">
-                          {style.tagline}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 2. CLOCK LAYOUT, DRAG SCALING & FREE POSITIONING (Requirements 2 & 3) */}
-              <div className="p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
-                  <div>
-                    <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
-                      <Move className="w-4 h-4 text-amber-400" />
-                      <span>Clock Layout, Scaling & Free Positioning</span>
-                    </label>
-                    <p className="text-xs text-neutral-400 mt-0.5">
-                      Drag freely across your desk screen or pull corners to resize and crop your clock.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onUpdateClockSettings({ customLayoutEnabled: true });
-                      onClose();
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs shadow-lg self-start sm:self-auto cursor-pointer transition-all hover:scale-105 active:scale-95"
-                    title="Unlock layout to drag and resize elements directly on your screen"
-                  >
-                    <Move className="w-3.5 h-3.5 stroke-[2.5]" />
-                    <span>Enter Freeform Layout Editor</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Clock Scale Size Slider & Presets */}
-                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-neutral-300">Clock Scale Size</span>
-                      <span className="font-mono text-xs text-amber-400 font-bold">
-                        {Math.round((clockSettings.clockScale ?? 1) * 100)}%
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="40"
-                      max="250"
-                      step="5"
-                      value={Math.round((clockSettings.clockScale ?? 1) * 100)}
-                      onChange={(e) =>
-                        onUpdateClockSettings({ clockScale: +(Number(e.target.value) / 100).toFixed(2) })
-                      }
-                      className="w-full accent-amber-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
-                    />
-                    <div className="flex items-center justify-between gap-1 pt-1">
-                      {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((preset) => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => onUpdateClockSettings({ clockScale: preset })}
-                          className={`px-2 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer ${
-                            Math.abs((clockSettings.clockScale ?? 1) - preset) < 0.05
-                              ? 'bg-amber-500 text-neutral-950 font-bold'
-                              : 'bg-neutral-800 text-neutral-400 hover:text-white'
-                          }`}
-                        >
-                          {preset}x
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Lateral & Vertical Sizing + Rotation */}
-                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-neutral-300">Dimensions & Rotation</span>
-                      <span className="text-[10px] font-mono text-neutral-400">
-                        W: {Math.round((clockSettings.clockScaleX ?? 1) * 100)}% • H: {Math.round((clockSettings.clockScaleY ?? 1) * 100)}% • {clockSettings.clockRotation ?? 0}°
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-[11px]">
-                      <div>
-                        <span className="text-[10px] text-neutral-400 block mb-1">Width (X)</span>
-                        <input
-                          type="range"
-                          min="40"
-                          max="220"
-                          step="5"
-                          value={Math.round((clockSettings.clockScaleX ?? 1) * 100)}
-                          onChange={(e) =>
-                            onUpdateClockSettings({ clockScaleX: +(Number(e.target.value) / 100).toFixed(2) })
-                          }
-                          className="w-full accent-sky-400 cursor-pointer h-1 bg-neutral-800 rounded-lg"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-neutral-400 block mb-1">Height (Y)</span>
-                        <input
-                          type="range"
-                          min="40"
-                          max="220"
-                          step="5"
-                          value={Math.round((clockSettings.clockScaleY ?? 1) * 100)}
-                          onChange={(e) =>
-                            onUpdateClockSettings({ clockScaleY: +(Number(e.target.value) / 100).toFixed(2) })
-                          }
-                          className="w-full accent-emerald-400 cursor-pointer h-1 bg-neutral-800 rounded-lg"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-neutral-400 block mb-1">Rotate</span>
-                        <input
-                          type="range"
-                          min="-180"
-                          max="180"
-                          step="5"
-                          value={clockSettings.clockRotation ?? 0}
-                          onChange={(e) =>
-                            onUpdateClockSettings({ clockRotation: Number(e.target.value) })
-                          }
-                          className="w-full accent-purple-400 cursor-pointer h-1 bg-neutral-800 rounded-lg"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-2 border-t border-neutral-800">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onUpdateClockSettings({
-                            clockPosition: { x: 0, y: 0 },
-                            clockScale: 1,
-                            clockScaleX: 1,
-                            clockScaleY: 1,
-                            clockRotation: 0,
-                          })
-                        }
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium cursor-pointer transition-colors"
-                      >
-                        <RotateCcw className="w-3 h-3 text-amber-400" />
-                        <span>Center Clock</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onUpdateClockSettings({
-                            clockPosition: { x: 0, y: 0 },
-                            clockScale: 1,
-                            clockScaleX: 1,
-                            clockScaleY: 1,
-                            clockRotation: 0,
-                            batteryWidgetPosition: { x: 0, y: 0 },
-                            stopwatchWidgetPosition: { x: 0, y: 0 },
-                            weatherWidgetPosition: { x: 0, y: 0 },
-                            focusGoalWidgetPosition: { x: 0, y: 0 },
-                            quickNoteWidgetPosition: { x: 0, y: 0 },
-                          })
-                        }
-                        className="py-1.5 px-3 rounded-lg bg-neutral-800/60 hover:bg-neutral-800 text-neutral-400 text-xs cursor-pointer transition-colors"
-                      >
-                        Reset All
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. DESKTOP WIDGETS SECTION (Requirement 5) */}
-              <div className="p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+              {/* STANDBY DESKTOP WIDGETS (Placement & Sizing Customization) */}
+              <div className="p-5 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-5 shadow-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-4">
                   <div>
                     <label className="text-xs font-semibold text-neutral-100 uppercase tracking-wider flex items-center gap-2">
                       <Battery className="w-4 h-4 text-emerald-400" />
                       <span>Standby Desktop Widgets</span>
                     </label>
                     <p className="text-xs text-neutral-400 mt-0.5">
-                      Enable desktop battery monitor and mini stopwatch timer, and choose their visual design.
+                      Customize widget placement and scale on your desk display. Clock and text elements stay fixed in default centered position.
                     </p>
                   </div>
 
-                  {/* Widget Theme Selector */}
-                  <div className="flex items-center gap-1 bg-neutral-900 p-1 rounded-xl border border-neutral-800 self-start sm:self-auto">
-                    <span className="text-[10px] text-neutral-400 px-1 font-mono uppercase">Theme:</span>
-                    {(['glass', 'solid', 'glow', 'minimal'] as WidgetTheme[]).map((theme) => (
-                      <button
-                        key={theme}
-                        type="button"
-                        onClick={() => onUpdateClockSettings({ widgetTheme: theme })}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono capitalize transition-all cursor-pointer ${
-                          (clockSettings.widgetTheme || 'glass') === theme
-                            ? 'bg-amber-500 text-neutral-950 font-bold'
-                            : 'text-neutral-400 hover:text-white'
-                        }`}
-                      >
-                        {theme}
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                    {/* Widget Theme Selector */}
+                    <div className="flex items-center gap-1 bg-neutral-900 p-1 rounded-xl border border-neutral-800">
+                      <span className="text-[10px] text-neutral-400 px-1 font-mono uppercase">Theme:</span>
+                      {(['glass', 'solid', 'glow', 'minimal'] as WidgetTheme[]).map((theme) => (
+                        <button
+                          key={theme}
+                          type="button"
+                          onClick={() => onUpdateClockSettings({ widgetTheme: theme })}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-mono capitalize transition-all cursor-pointer ${
+                            (clockSettings.widgetTheme || 'glass') === theme
+                              ? 'bg-amber-500 text-neutral-950 font-bold'
+                              : 'text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          {theme}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Interactive Widget Move & Resize Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateClockSettings({ widgetEditMode: true });
+                        onClose();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-semibold cursor-pointer transition-colors"
+                      title="Directly drag and pull corner handles on widgets to position and resize them on screen"
+                    >
+                      <Move className="w-3.5 h-3.5" />
+                      <span>Move & Resize on Screen</span>
+                    </button>
                   </div>
                 </div>
 
+                {/* 1. WEATHER WIDGET (Ask for user's desired location) */}
+                <div className="p-4 rounded-xl bg-neutral-900 border border-neutral-800 space-y-4">
+                  <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <CloudSun className="w-4 h-4 text-sky-400" />
+                      <div>
+                        <span className="text-xs font-bold text-neutral-200 block">Live Weather Widget</span>
+                        <span className="text-[11px] text-neutral-400 block">
+                          Current: {clockSettings.weatherLocation || 'San Francisco, CA'} ({clockSettings.weatherUnit === 'celsius' ? '°C' : '°F'})
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      id="toggle-weather-widget-btn"
+                      onClick={() =>
+                        onUpdateClockSettings({
+                          showWeatherWidget: clockSettings.showWeatherWidget !== false ? false : true,
+                        })
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase cursor-pointer transition-all ${
+                        clockSettings.showWeatherWidget !== false
+                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                          : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
+                      }`}
+                    >
+                      {clockSettings.showWeatherWidget !== false ? 'Enabled' : 'Disabled'}
+                    </button>
+                  </div>
+
+                  {clockSettings.showWeatherWidget !== false && (
+                    <div className="space-y-4 pt-1">
+                      {/* Location Input Prompt */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold text-neutral-200 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Which location&apos;s weather do you want?</span>
+                          </span>
+                          {weatherStatusMsg && (
+                            <span className="text-[11px] text-sky-400 font-mono animate-fade-in font-normal">
+                              {weatherStatusMsg}
+                            </span>
+                          )}
+                        </label>
+
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <MapPin className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <input
+                              type="text"
+                              value={weatherLocationInput}
+                              onChange={(e) => setWeatherLocationInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleUpdateWeatherLocation();
+                                }
+                              }}
+                              placeholder="Enter city or region (e.g. London, Tokyo, New York, Paris)..."
+                              className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-950 border border-neutral-700 hover:border-neutral-600 focus:border-sky-400 focus:outline-none text-xs text-neutral-100 placeholder:text-neutral-500 transition-colors"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateWeatherLocation()}
+                            disabled={isSearchingLocation}
+                            className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50"
+                          >
+                            {isSearchingLocation ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Search className="w-3.5 h-3.5" />
+                            )}
+                            <span>Search</span>
+                          </button>
+                        </div>
+
+                        {/* Quick-Pick Popular Cities */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          <span className="text-[10px] text-neutral-500 font-mono">Popular:</span>
+                          {[
+                            'San Francisco',
+                            'New York',
+                            'London',
+                            'Tokyo',
+                            'Paris',
+                            'Sydney',
+                            'Berlin',
+                          ].map((city) => (
+                            <button
+                              key={city}
+                              type="button"
+                              onClick={() => {
+                                setWeatherLocationInput(city);
+                                handleUpdateWeatherLocation(city);
+                              }}
+                              className="px-2 py-0.5 rounded-lg bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-[10px] text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                            >
+                              {city}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Temperature Units & Style Selection */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-neutral-800">
+                        {/* Units */}
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] text-neutral-400 font-medium block">
+                            Temperature Unit:
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onUpdateClockSettings({ weatherUnit: 'fahrenheit' })}
+                              className={`flex-1 py-1.5 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                                (clockSettings.weatherUnit || 'fahrenheit') === 'fahrenheit'
+                                  ? 'border-sky-400 bg-sky-500/20 text-sky-300'
+                                  : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              Fahrenheit (°F)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onUpdateClockSettings({ weatherUnit: 'celsius' })}
+                              className={`flex-1 py-1.5 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                                clockSettings.weatherUnit === 'celsius'
+                                  ? 'border-sky-400 bg-sky-500/20 text-sky-300'
+                                  : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              Celsius (°C)
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Weather Widget Scale */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-neutral-400 font-medium">Widget Size:</span>
+                            <span className="font-mono text-xs text-sky-400 font-bold">
+                              {Math.round((clockSettings.weatherWidgetScale ?? 1) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="50"
+                            max="220"
+                            step="5"
+                            value={Math.round((clockSettings.weatherWidgetScale ?? 1) * 100)}
+                            onChange={(e) =>
+                              onUpdateClockSettings({
+                                weatherWidgetScale: +(Number(e.target.value) / 100).toFixed(2),
+                              })
+                            }
+                            className="w-full accent-sky-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Weather Widget Visual Styles */}
+                      <div className="space-y-2 pt-2 border-t border-neutral-800">
+                        <span className="text-[11px] text-neutral-400 block">Weather Widget Style:</span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {[
+                            { id: 'pill', label: 'Pill Capsule', desc: 'Compact bar' },
+                            { id: 'card', label: 'Glass Card', desc: 'Detailed view' },
+                            { id: 'detailed', label: 'Full Forecast', desc: 'Wind & humidity' },
+                            { id: 'minimal', label: 'Minimal Badge', desc: 'Subtle badge' },
+                          ].map((wStyle) => {
+                            const isCurrent = (clockSettings.weatherWidgetStyle || 'pill') === wStyle.id;
+                            return (
+                              <button
+                                key={wStyle.id}
+                                type="button"
+                                onClick={() =>
+                                  onUpdateClockSettings({
+                                    weatherWidgetStyle: wStyle.id as WeatherWidgetStyle,
+                                  })
+                                }
+                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                                  isCurrent
+                                    ? 'border-sky-400 bg-sky-500/15 text-sky-300 font-semibold'
+                                    : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/60 text-neutral-300'
+                                }`}
+                              >
+                                <span className="text-xs block">{wStyle.label}</span>
+                                <span className="text-[10px] text-neutral-400 block">{wStyle.desc}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Weather Placement Coordinates */}
+                      <div className="flex items-center justify-between pt-2 border-t border-neutral-800 text-[11px]">
+                        <span className="text-neutral-400">
+                          Coordinates: X: {clockSettings.weatherWidgetPosition?.x || 0}px • Y: {clockSettings.weatherWidgetPosition?.y || 0}px
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onUpdateClockSettings({ weatherWidgetPosition: { x: 0, y: 0 } })}
+                          className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-medium transition-colors cursor-pointer"
+                        >
+                          Reset Position
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. BATTERY & STOPWATCH WIDGETS */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Battery Widget */}
                   <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3">
@@ -1343,36 +1331,76 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     {clockSettings.showBatteryWidget && (
-                      <div className="space-y-2 pt-2 border-t border-neutral-800">
-                        <span className="text-[11px] text-neutral-400 block">Battery Widget Style:</span>
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { id: 'pill', label: 'Pill Capsule', desc: 'Sleek level bar' },
-                            { id: 'gauge', label: 'Dial Gauge', desc: 'Circular meter' },
-                            { id: 'minimal', label: 'Minimal Glyph', desc: 'Compact dot' },
-                            { id: 'cyber', label: 'Cyber Cell', desc: 'Segmented matrix' },
-                          ].map((bStyle) => {
-                            const isCurrent = (clockSettings.batteryWidgetStyle || 'pill') === bStyle.id;
-                            return (
-                              <button
-                                key={bStyle.id}
-                                type="button"
-                                onClick={() =>
-                                  onUpdateClockSettings({
-                                    batteryWidgetStyle: bStyle.id as BatteryWidgetStyle,
-                                  })
-                                }
-                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
-                                  isCurrent
-                                    ? 'border-emerald-400 bg-emerald-500/15 text-emerald-300 font-semibold'
-                                    : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/60 text-neutral-300'
-                                }`}
-                              >
-                                <span className="text-xs block">{bStyle.label}</span>
-                                <span className="text-[10px] text-neutral-400 block">{bStyle.desc}</span>
-                              </button>
-                            );
-                          })}
+                      <div className="space-y-3 pt-2 border-t border-neutral-800">
+                        {/* Battery Size Slider */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-neutral-400">Battery Size:</span>
+                            <span className="font-mono text-xs text-emerald-400 font-bold">
+                              {Math.round((clockSettings.batteryWidgetScale ?? 1) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="50"
+                            max="220"
+                            step="5"
+                            value={Math.round((clockSettings.batteryWidgetScale ?? 1) * 100)}
+                            onChange={(e) =>
+                              onUpdateClockSettings({
+                                batteryWidgetScale: +(Number(e.target.value) / 100).toFixed(2),
+                              })
+                            }
+                            className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+                          />
+                        </div>
+
+                        {/* Battery Widget Style */}
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] text-neutral-400 block">Style:</span>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { id: 'pill', label: 'Pill Capsule', desc: 'Sleek level bar' },
+                              { id: 'gauge', label: 'Dial Gauge', desc: 'Circular meter' },
+                              { id: 'minimal', label: 'Minimal Glyph', desc: 'Compact dot' },
+                              { id: 'cyber', label: 'Cyber Cell', desc: 'Segmented matrix' },
+                            ].map((bStyle) => {
+                              const isCurrent = (clockSettings.batteryWidgetStyle || 'pill') === bStyle.id;
+                              return (
+                                <button
+                                  key={bStyle.id}
+                                  type="button"
+                                  onClick={() =>
+                                    onUpdateClockSettings({
+                                      batteryWidgetStyle: bStyle.id as BatteryWidgetStyle,
+                                    })
+                                  }
+                                  className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                                    isCurrent
+                                      ? 'border-emerald-400 bg-emerald-500/15 text-emerald-300 font-semibold'
+                                      : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/60 text-neutral-300'
+                                  }`}
+                                >
+                                  <span className="text-xs block">{bStyle.label}</span>
+                                  <span className="text-[10px] text-neutral-400 block">{bStyle.desc}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Battery Placement Position Coordinates */}
+                        <div className="flex items-center justify-between pt-1 border-t border-neutral-800 text-[11px]">
+                          <span className="text-neutral-400">
+                            X: {clockSettings.batteryWidgetPosition?.x || 0}px • Y: {clockSettings.batteryWidgetPosition?.y || 0}px
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateClockSettings({ batteryWidgetPosition: { x: 0, y: 0 } })}
+                            className="px-2 py-0.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] cursor-pointer"
+                          >
+                            Reset
+                          </button>
                         </div>
                       </div>
                     )}
@@ -1404,204 +1432,104 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     {clockSettings.showStopwatchWidget && (
-                      <div className="space-y-2 pt-2 border-t border-neutral-800">
-                        <span className="text-[11px] text-neutral-400 block">Stopwatch Style:</span>
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { id: 'compact', label: 'Inline Pill', desc: 'Compact ticker' },
-                            { id: 'ring', label: 'Progress Ring', desc: 'Radial runner' },
-                            { id: 'card', label: 'Glass Card', desc: 'Split lap timer' },
-                            { id: 'cyber', label: 'Cyber HUD', desc: 'Sci-fi precision' },
-                          ].map((swStyle) => {
-                            const isCurrent = (clockSettings.stopwatchWidgetStyle || 'compact') === swStyle.id;
-                            return (
-                              <button
-                                key={swStyle.id}
-                                type="button"
-                                onClick={() =>
-                                  onUpdateClockSettings({
-                                    stopwatchWidgetStyle: swStyle.id as StopwatchWidgetStyle,
-                                  })
-                                }
-                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
-                                  isCurrent
-                                    ? 'border-sky-400 bg-sky-500/15 text-sky-300 font-semibold'
-                                    : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/60 text-neutral-300'
-                                }`}
-                              >
-                                <span className="text-xs block">{swStyle.label}</span>
-                                <span className="text-[10px] text-neutral-400 block">{swStyle.desc}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Weather Widget */}
-                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <CloudSun className="w-4 h-4 text-amber-400" />
-                        <span className="text-xs font-bold text-neutral-200">Weather & Temp</span>
-                      </div>
-                      <button
-                        type="button"
-                        id="toggle-weather-widget-btn"
-                        onClick={() =>
-                          onUpdateClockSettings({
-                            showWeatherWidget: !clockSettings.showWeatherWidget,
-                          })
-                        }
-                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase cursor-pointer transition-all ${
-                          clockSettings.showWeatherWidget
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                            : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
-                        }`}
-                      >
-                        {clockSettings.showWeatherWidget ? 'Enabled' : 'Disabled'}
-                      </button>
-                    </div>
-
-                    {clockSettings.showWeatherWidget && (
-                      <div className="space-y-2.5 pt-2 border-t border-neutral-800 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-neutral-400">Unit & City:</span>
-                          <button
-                            type="button"
-                            onClick={() =>
+                      <div className="space-y-3 pt-2 border-t border-neutral-800">
+                        {/* Stopwatch Size Slider */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-neutral-400">Stopwatch Size:</span>
+                            <span className="font-mono text-xs text-sky-400 font-bold">
+                              {Math.round((clockSettings.stopwatchWidgetScale ?? 1) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="50"
+                            max="220"
+                            step="5"
+                            value={Math.round((clockSettings.stopwatchWidgetScale ?? 1) * 100)}
+                            onChange={(e) =>
                               onUpdateClockSettings({
-                                weatherTempUnit: clockSettings.weatherTempUnit === 'c' ? 'f' : 'c',
+                                stopwatchWidgetScale: +(Number(e.target.value) / 100).toFixed(2),
                               })
                             }
-                            className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-amber-300 font-mono font-bold text-[10px]"
+                            className="w-full accent-sky-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+                          />
+                        </div>
+
+                        {/* Stopwatch Style */}
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] text-neutral-400 block">Style:</span>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { id: 'compact', label: 'Inline Pill', desc: 'Compact ticker' },
+                              { id: 'ring', label: 'Progress Ring', desc: 'Radial runner' },
+                              { id: 'card', label: 'Glass Card', desc: 'Split lap timer' },
+                              { id: 'cyber', label: 'Cyber HUD', desc: 'Sci-fi precision' },
+                            ].map((swStyle) => {
+                              const isCurrent = (clockSettings.stopwatchWidgetStyle || 'compact') === swStyle.id;
+                              return (
+                                <button
+                                  key={swStyle.id}
+                                  type="button"
+                                  onClick={() =>
+                                    onUpdateClockSettings({
+                                      stopwatchWidgetStyle: swStyle.id as StopwatchWidgetStyle,
+                                    })
+                                  }
+                                  className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                                    isCurrent
+                                      ? 'border-sky-400 bg-sky-500/15 text-sky-300 font-semibold'
+                                      : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/60 text-neutral-300'
+                                  }`}
+                                >
+                                  <span className="text-xs block">{swStyle.label}</span>
+                                  <span className="text-[10px] text-neutral-400 block">{swStyle.desc}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Stopwatch Placement Coordinates */}
+                        <div className="flex items-center justify-between pt-1 border-t border-neutral-800 text-[11px]">
+                          <span className="text-neutral-400">
+                            X: {clockSettings.stopwatchWidgetPosition?.x || 0}px • Y: {clockSettings.stopwatchWidgetPosition?.y || 0}px
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateClockSettings({ stopwatchWidgetPosition: { x: 0, y: 0 } })}
+                            className="px-2 py-0.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] cursor-pointer"
                           >
-                            °{(clockSettings.weatherTempUnit || 'f').toUpperCase()}
+                            Reset
                           </button>
                         </div>
-
-                        <input
-                          type="text"
-                          value={clockSettings.weatherCity || 'San Francisco'}
-                          onChange={(e) => onUpdateClockSettings({ weatherCity: e.target.value })}
-                          placeholder="City name"
-                          className="w-full bg-neutral-950 text-neutral-200 px-2.5 py-1 rounded-lg border border-neutral-800 text-xs outline-none focus:border-amber-400"
-                        />
-
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {[
-                            { id: 'pill', label: 'Pill' },
-                            { id: 'card', label: 'Card' },
-                            { id: 'minimal', label: 'Minimal' },
-                          ].map((wStyle) => (
-                            <button
-                              key={wStyle.id}
-                              type="button"
-                              onClick={() =>
-                                onUpdateClockSettings({
-                                  weatherWidgetStyle: wStyle.id as any,
-                                })
-                              }
-                              className={`py-1 px-1.5 rounded-lg border text-center text-[10px] cursor-pointer ${
-                                (clockSettings.weatherWidgetStyle || 'pill') === wStyle.id
-                                  ? 'border-amber-400 bg-amber-500/15 text-amber-300 font-bold'
-                                  : 'border-neutral-800 text-neutral-400 hover:text-white bg-neutral-950'
-                              }`}
-                            >
-                              {wStyle.label}
-                            </button>
-                          ))}
-                        </div>
                       </div>
                     )}
                   </div>
+                </div>
 
-                  {/* Daily Focus Goal Widget */}
-                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Target className="w-4 h-4 text-emerald-400" />
-                        <span className="text-xs font-bold text-neutral-200">Daily Focus Goal</span>
-                      </div>
-                      <button
-                        type="button"
-                        id="toggle-focus-goal-widget-btn"
-                        onClick={() =>
-                          onUpdateClockSettings({
-                            showFocusGoalWidget: !clockSettings.showFocusGoalWidget,
-                          })
-                        }
-                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase cursor-pointer transition-all ${
-                          clockSettings.showFocusGoalWidget
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                            : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
-                        }`}
-                      >
-                        {clockSettings.showFocusGoalWidget ? 'Enabled' : 'Disabled'}
-                      </button>
-                    </div>
-
-                    {clockSettings.showFocusGoalWidget && (
-                      <div className="space-y-2 pt-2 border-t border-neutral-800 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-neutral-400">Daily Target Sessions:</span>
-                          <span className="font-mono text-emerald-400 font-bold">
-                            {clockSettings.focusDailyTarget || 4} sessions
-                          </span>
-                        </div>
-                        <input
-                          type="range"
-                          min="1"
-                          max="12"
-                          value={clockSettings.focusDailyTarget || 4}
-                          onChange={(e) =>
-                            onUpdateClockSettings({ focusDailyTarget: Number(e.target.value) })
-                          }
-                          className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Quick Desk Sticky Note Widget */}
-                  <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3 sm:col-span-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <StickyNote className="w-4 h-4 text-amber-400" />
-                        <span className="text-xs font-bold text-neutral-200">Desk Sticky Note / Quick Memo</span>
-                      </div>
-                      <button
-                        type="button"
-                        id="toggle-quick-note-widget-btn"
-                        onClick={() =>
-                          onUpdateClockSettings({
-                            showQuickNoteWidget: !clockSettings.showQuickNoteWidget,
-                          })
-                        }
-                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase cursor-pointer transition-all ${
-                          clockSettings.showQuickNoteWidget
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                            : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
-                        }`}
-                      >
-                        {clockSettings.showQuickNoteWidget ? 'Enabled' : 'Disabled'}
-                      </button>
-                    </div>
-
-                    {clockSettings.showQuickNoteWidget && (
-                      <div className="space-y-2 pt-2 border-t border-neutral-800 text-xs">
-                        <span className="text-[11px] text-neutral-400 block">Note Text:</span>
-                        <input
-                          type="text"
-                          value={clockSettings.quickNoteText ?? 'Deep Work Mode • Stay Hydrated 💧'}
-                          onChange={(e) => onUpdateClockSettings({ quickNoteText: e.target.value })}
-                          placeholder="e.g. Finish task, Stay hydrated..."
-                          className="w-full bg-neutral-950 text-neutral-200 px-3 py-1.5 rounded-lg border border-neutral-800 text-xs outline-none focus:border-amber-400"
-                        />
-                      </div>
-                    )}
-                  </div>
+                {/* Overall Widget Reset */}
+                <div className="flex items-center justify-between pt-3 border-t border-neutral-800/80">
+                  <span className="text-[11px] text-neutral-400">
+                    Reset all widget placements and dimensions to default docking:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateClockSettings({
+                        batteryWidgetPosition: { x: 0, y: 0 },
+                        batteryWidgetScale: 1,
+                        stopwatchWidgetPosition: { x: 0, y: 0 },
+                        stopwatchWidgetScale: 1,
+                        weatherWidgetPosition: { x: 0, y: 0 },
+                        weatherWidgetScale: 1,
+                      })
+                    }
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium cursor-pointer transition-colors"
+                  >
+                    <RotateCcw className="w-3 h-3 text-amber-400" />
+                    <span>Reset All Widgets</span>
+                  </button>
                 </div>
               </div>
 
@@ -2126,10 +2054,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {/* Extended Typography & Font Picker (13 Fonts) */}
               <div className="space-y-3">
-                <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <Type className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Clock Digit Fonts ({FONT_OPTIONS.length} Distinct Styles)</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Type className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Clock Digit Fonts ({FONT_OPTIONS.length} Distinct Styles)</span>
+                  </label>
+                  <span className="text-[10px] text-amber-400/90 font-mono">
+                    Uniform optical scale
+                  </span>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-64 overflow-y-auto pr-1">
                   {FONT_OPTIONS.map((font) => {
                     const isSelected = clockSettings.fontFamily === font.id;
@@ -2152,7 +2085,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <span
                           className="text-base tracking-wider block truncate"
-                          style={{ fontFamily: font.cssFamily }}
+                          style={{
+                            fontFamily: font.cssFamily,
+                            transform: `scale(${FONT_OPTICAL_SCALES[font.id] || 1.0})`,
+                            transformOrigin: 'left center',
+                          }}
                         >
                           {font.sample}
                         </span>
@@ -3287,6 +3224,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
                   </label>
                 </div>
+
+                {/* 30s Inactivity Zen Glow Rectangle Mode Toggle */}
+                <div className="flex items-center justify-between pt-3 border-t border-neutral-800/80">
+                  <div className="pr-4">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-xs font-semibold text-neutral-200 block">
+                        Zen Screen Glow Rectangle on 30s Inactivity
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-neutral-400 block mt-0.5">
+                      When timer is running and inactive for 30s, hides side taskbar & controls, expanding the clock into an edge-glowing fullscreen focus rectangle with enlarged digits. Moving mouse pointer instantly restores standard view.
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      id="pomo-idle-zen-toggle"
+                      type="checkbox"
+                      checked={pomodoroSettings.idleMinimalMode !== false}
+                      onChange={(e) =>
+                        onUpdatePomodoroSettings({ idleMinimalMode: e.target.checked })
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                  </label>
+                </div>
               </div>
 
               {/* SECTION 3: FINE-TUNE POMODORO PALETTE (CUSTOM COLOR PICKERS) */}
@@ -3464,7 +3428,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           </div>
                           <span
                             className="text-base tracking-wider block truncate"
-                            style={{ fontFamily: font.cssFamily }}
+                            style={{
+                              fontFamily: font.cssFamily,
+                              transform: `scale(${FONT_OPTICAL_SCALES[font.id] || 1.0})`,
+                              transformOrigin: 'left center',
+                            }}
                           >
                             25:00
                           </span>

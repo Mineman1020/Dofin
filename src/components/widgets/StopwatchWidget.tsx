@@ -1,6 +1,8 @@
 import React, { memo, useState, useEffect, useRef } from 'react';
 import { Play, Pause, RotateCcw, Timer } from 'lucide-react';
 import { StopwatchWidgetStyle, WidgetTheme } from '../../types';
+import { WidgetAdjustmentDots } from './WidgetAdjustmentDots';
+import { calculateWidgetSnap, SnapState } from '../../utils/widgetSnapping';
 
 interface StopwatchWidgetProps {
   style?: StopwatchWidgetStyle;
@@ -12,6 +14,7 @@ interface StopwatchWidgetProps {
   onScaleChange?: (scale: number) => void;
   accentColor?: string;
   isLight?: boolean;
+  onSnapChange?: (snap: SnapState) => void;
 }
 
 export const StopwatchWidget: React.FC<StopwatchWidgetProps> = memo(
@@ -25,6 +28,7 @@ export const StopwatchWidget: React.FC<StopwatchWidgetProps> = memo(
     onScaleChange,
     accentColor = '#f59e0b',
     isLight = false,
+    onSnapChange,
   }) => {
     const [isRunning, setIsRunning] = useState<boolean>(false);
     const [elapsedMs, setElapsedMs] = useState<number>(0);
@@ -33,6 +37,12 @@ export const StopwatchWidget: React.FC<StopwatchWidgetProps> = memo(
 
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+    const dragBasePosRef = useRef<{ baseX: number; baseY: number; width: number; height: number }>({
+      baseX: 0,
+      baseY: 0,
+      width: 0,
+      height: 0,
+    });
 
     const widgetRef = useRef<HTMLDivElement>(null);
     const [isResizing, setIsResizing] = useState<boolean>(false);
@@ -40,6 +50,7 @@ export const StopwatchWidget: React.FC<StopwatchWidgetProps> = memo(
       startDist: 0,
       startScale: 1,
     });
+    const rafRef = useRef<number | null>(null);
 
     const widgetScale = Math.max(0.5, Math.min(2.5, scale));
 
@@ -71,14 +82,22 @@ export const StopwatchWidget: React.FC<StopwatchWidgetProps> = memo(
         const dist = Math.hypot(clientX - centerX, clientY - centerY);
         const ratio = dist / resizeStart.startDist;
         const newScale = Math.max(0.5, Math.min(2.5, +(resizeStart.startScale * ratio).toFixed(2)));
-        onScaleChange?.(newScale);
+
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+          onScaleChange?.(newScale);
+        });
       };
-      const onEnd = () => setIsResizing(false);
-      window.addEventListener('mousemove', onMove);
+      const onEnd = () => {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        setIsResizing(false);
+      };
+      window.addEventListener('mousemove', onMove, { passive: true });
       window.addEventListener('mouseup', onEnd);
-      window.addEventListener('touchmove', onMove);
+      window.addEventListener('touchmove', onMove, { passive: true });
       window.addEventListener('touchend', onEnd);
       return () => {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onEnd);
         window.removeEventListener('touchmove', onMove);
@@ -126,74 +145,98 @@ export const StopwatchWidget: React.FC<StopwatchWidgetProps> = memo(
       if (!isCustomLayout) return;
       e.stopPropagation();
       setIsDragging(true);
+      const curX = position?.x || 0;
+      const curY = position?.y || 0;
       setDragStart({
-        x: e.clientX - (position?.x || 0),
-        y: e.clientY - (position?.y || 0),
+        x: e.clientX - curX,
+        y: e.clientY - curY,
       });
+      if (widgetRef.current) {
+        const rect = widgetRef.current.getBoundingClientRect();
+        dragBasePosRef.current = {
+          baseX: rect.left - curX,
+          baseY: rect.top - curY,
+          width: rect.width,
+          height: rect.height,
+        };
+      }
     };
 
     const handleTouchStart = (e: React.TouchEvent) => {
       if (!isCustomLayout || !e.touches[0]) return;
       e.stopPropagation();
       setIsDragging(true);
+      const curX = position?.x || 0;
+      const curY = position?.y || 0;
       setDragStart({
-        x: e.touches[0].clientX - (position?.x || 0),
-        y: e.touches[0].clientY - (position?.y || 0),
+        x: e.touches[0].clientX - curX,
+        y: e.touches[0].clientY - curY,
       });
+      if (widgetRef.current) {
+        const rect = widgetRef.current.getBoundingClientRect();
+        dragBasePosRef.current = {
+          baseX: rect.left - curX,
+          baseY: rect.top - curY,
+          width: rect.width,
+          height: rect.height,
+        };
+      }
     };
 
     useEffect(() => {
       if (!isDragging) return;
 
-      let rafId: number | null = null;
-      let latestPos = { x: 0, y: 0 };
-
-      const scheduleUpdate = () => {
-        if (rafId === null) {
-          rafId = requestAnimationFrame(() => {
-            onPositionChange?.(latestPos);
-            rafId = null;
-          });
-        }
-      };
-
       const onMouseMove = (e: MouseEvent) => {
-        latestPos = {
-          x: Math.round(e.clientX - dragStart.x),
-          y: Math.round(e.clientY - dragStart.y),
-        };
-        scheduleUpdate();
+        const { nextX, nextY, snap } = calculateWidgetSnap(
+          e.clientX,
+          e.clientY,
+          dragStart,
+          dragBasePosRef.current
+        );
+        onSnapChange?.(snap);
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+          onPositionChange?.({ x: nextX, y: nextY });
+        });
       };
 
       const onTouchMove = (e: TouchEvent) => {
         if (!e.touches[0]) return;
-        latestPos = {
-          x: Math.round(e.touches[0].clientX - dragStart.x),
-          y: Math.round(e.touches[0].clientY - dragStart.y),
-        };
-        scheduleUpdate();
+        const { nextX, nextY, snap } = calculateWidgetSnap(
+          e.touches[0].clientX,
+          e.touches[0].clientY,
+          dragStart,
+          dragBasePosRef.current
+        );
+        onSnapChange?.(snap);
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+          onPositionChange?.({ x: nextX, y: nextY });
+        });
       };
 
       const onEnd = () => {
-        if (rafId !== null) cancelAnimationFrame(rafId);
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
         setIsDragging(false);
+        onSnapChange?.({ snapXCenter: false, snapYCenter: false, corner: null });
       };
 
-      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mousemove', onMouseMove, { passive: true });
       window.addEventListener('mouseup', onEnd);
       window.addEventListener('touchmove', onTouchMove, { passive: true });
       window.addEventListener('touchend', onEnd);
 
       return () => {
-        if (rafId !== null) cancelAnimationFrame(rafId);
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onEnd);
         window.removeEventListener('touchmove', onTouchMove);
         window.removeEventListener('touchend', onEnd);
       };
-    }, [isDragging, dragStart, onPositionChange]);
+    }, [isDragging, dragStart, onPositionChange, onSnapChange]);
 
-    const baseContainerClass = `select-none ${isDragging ? '!transition-none' : 'transition-colors duration-200'} ${
+    // Rock-solid flat hover - NO hover:scale or rising transform!
+    const baseContainerClass = `select-none ${
       isCustomLayout
         ? 'cursor-grab active:cursor-grabbing border-2 border-dashed border-amber-400/80 z-30'
         : 'z-10'
@@ -214,18 +257,13 @@ export const StopwatchWidget: React.FC<StopwatchWidgetProps> = memo(
     const dragStyle: React.CSSProperties = {
       transform: `translate3d(${position?.x || 0}px, ${position?.y || 0}px, 0) scale(${widgetScale})`,
       transformOrigin: 'center center',
-      transition: isDragging || isResizing ? 'none' : 'transform 0.15s ease-out',
+      transition: isDragging || isResizing ? 'none' : 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+      willChange: isDragging || isResizing ? 'transform' : 'auto',
+      touchAction: isCustomLayout ? 'none' : 'auto',
     };
 
     const resizeHandle = isCustomLayout ? (
-      <div
-        onMouseDown={handleResizeMouseDown}
-        onTouchStart={handleResizeMouseDown}
-        className="absolute -bottom-2.5 -right-2.5 z-40 w-5 h-5 rounded-full bg-amber-400 hover:bg-amber-300 text-neutral-950 flex items-center justify-center cursor-nwse-resize shadow-xl border border-neutral-900 transition-transform hover:scale-125 select-none"
-        title="Hold & drag mouse outward to increase widget size, inward to decrease"
-      >
-        <span className="text-[10px] font-bold leading-none">⤡</span>
-      </div>
+      <WidgetAdjustmentDots onResizeStart={handleResizeMouseDown} />
     ) : null;
 
     // 1. Ring / Chronograph Dial Style
