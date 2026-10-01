@@ -20,16 +20,18 @@ import {
   Keyboard,
   Sparkles,
 } from 'lucide-react';
-import { ClockSettings, PomodoroSettings, ViewMode } from '../types';
+import { ClockSettings, PomodoroSettings, ViewMode, UserAccount } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS, FONT_OPTICAL_SCALES } from '../utils/constants';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
 import { useFullscreen } from '../utils/useFullscreen';
 
 interface WelcomeScreenProps {
   userName: string;
+  userAccount?: UserAccount | null;
   onSelectMode: (mode: ViewMode) => void;
   onOpenSettings: () => void;
   onOpenNameModal: () => void;
+  onOpenAccountModal?: () => void;
   onOpenParties?: (tab?: 'leaderboard' | 'my-parties' | 'create' | 'join') => void;
   onOpenShortcuts?: () => void;
   clockSettings: ClockSettings;

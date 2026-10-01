@@ -1,0 +1,461 @@
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { db, getOrCreateAvatarColor } from './firebase';
+import { UserAccount, UserCloudSyncData } from '../types';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: null,
+      email: null,
+      emailVerified: false,
+      isAnonymous: false,
+      tenantId: null,
+      providerInfo: [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+const ACCOUNT_STORAGE_KEY = 'desk_clock_account_v1';
+const LAST_SYNC_STORAGE_KEY = 'desk_clock_last_sync_v1';
+const PASSWORD_SALT = '_dek_clock_secure_salt_2026_';
+
+// Local storage keys that contain user's progress and custom setup
+const SYNC_KEYS = {
+  USER_NAME: 'desk_clock_user_name',
+  CLOCK_SETTINGS: 'desk_clock_settings_v1',
+  POMODORO_SETTINGS: 'desk_clock_pomodoro_v1',
+  DARK_MODE: 'desk_clock_dark_mode_v1',
+  TASKS: 'desk_clock_pomodoro_tasks_v1',
+  STATS: 'desk_clock_focus_stats_v1',
+  ACTIVE_SESSION: 'desk_clock_active_session_v1',
+};
+
+/**
+ * Hash password with SHA-256 and salt using native browser Web Crypto API
+ */
+export async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + PASSWORD_SALT);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Format and normalize username to ensure it ends with @dek
+ * e.g. "alex" -> "alex@dek", "john@dek" -> "john@dek"
+ */
+export function formatUsername(input: string): string {
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed) return '';
+  if (trimmed.endsWith('@dek')) {
+    return trimmed;
+  }
+  // Strip any trailing @ symbol before appending
+  const clean = trimmed.replace(/@+$/, '');
+  return `${clean}@dek`;
+}
+
+/**
+ * Validate username format: must end with @dek, contain 2-40 character prefix of [a-z0-9._-]
+ */
+export function validateUsername(username: string): { isValid: boolean; error?: string } {
+  const normalized = formatUsername(username);
+  if (!normalized) {
+    return { isValid: false, error: 'Please enter a username.' };
+  }
+  if (!normalized.endsWith('@dek')) {
+    return { isValid: false, error: 'Username must end with @dek (e.g. yourname@dek).' };
+  }
+  const prefix = normalized.slice(0, -4);
+  if (prefix.length < 2) {
+    return { isValid: false, error: 'Username must have at least 2 characters before @dek.' };
+  }
+  if (prefix.length > 40) {
+    return { isValid: false, error: 'Username is too long (maximum 40 characters).' };
+  }
+  if (!/^[a-z0-9._-]+@dek$/.test(normalized)) {
+    return {
+      isValid: false,
+      error: 'Username can only contain letters, numbers, dots (.), underscores (_), and hyphens (-).',
+    };
+  }
+  return { isValid: true };
+}
+
+/**
+ * Validate password requirements
+ */
+export function validatePassword(password: string): { isValid: boolean; error?: string } {
+  if (!password || password.length < 4) {
+    return { isValid: false, error: 'Password must be at least 4 characters long.' };
+  }
+  if (password.length > 80) {
+    return { isValid: false, error: 'Password is too long (maximum 80 characters).' };
+  }
+  return { isValid: true };
+}
+
+/**
+ * Safe document ID generator from username
+ */
+export function getAccountDocId(normalizedUsername: string): string {
+  return normalizedUsername.toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+}
+
+/**
+ * Get active logged-in account from localStorage, or null if guest
+ */
+export function getActiveAccount(): UserAccount | null {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.debug('Failed to parse active account:', e);
+    return null;
+  }
+}
+
+/**
+ * Check if the user is in Guest Mode
+ */
+export function isGuestMode(): boolean {
+  return getActiveAccount() === null;
+}
+
+/**
+ * Get last sync timestamp string
+ */
+export function getLastSyncTime(): string | null {
+  return localStorage.getItem(LAST_SYNC_STORAGE_KEY);
+}
+
+/**
+ * Collect all current local storage data into a sync packet
+ */
+export function collectCurrentLocalData(): UserCloudSyncData {
+  let clockSettings;
+  let pomodoroSettings;
+  let tasks;
+  let stats;
+  let isDarkMode = false;
+  let userName = '';
+  let completedRounds = 0;
+  let consecutiveStreak = 0;
+
+  try {
+    const rawClock = localStorage.getItem(SYNC_KEYS.CLOCK_SETTINGS);
+    if (rawClock) clockSettings = JSON.parse(rawClock);
+
+    const rawPomo = localStorage.getItem(SYNC_KEYS.POMODORO_SETTINGS);
+    if (rawPomo) pomodoroSettings = JSON.parse(rawPomo);
+
+    const rawTasks = localStorage.getItem(SYNC_KEYS.TASKS);
+    if (rawTasks) tasks = JSON.parse(rawTasks);
+
+    const rawStats = localStorage.getItem(SYNC_KEYS.STATS);
+    if (rawStats) stats = JSON.parse(rawStats);
+
+    const rawDark = localStorage.getItem(SYNC_KEYS.DARK_MODE);
+    if (rawDark !== null) isDarkMode = rawDark === 'true';
+
+    userName = localStorage.getItem(SYNC_KEYS.USER_NAME) || '';
+
+    const rawSession = localStorage.getItem(SYNC_KEYS.ACTIVE_SESSION);
+    if (rawSession) {
+      const sess = JSON.parse(rawSession);
+      completedRounds = sess.completedRounds || 0;
+      consecutiveStreak = sess.consecutiveStreak || 0;
+    }
+  } catch (e) {
+    console.debug('Error collecting local data for sync:', e);
+  }
+
+  return {
+    userName,
+    isDarkMode,
+    clockSettings,
+    pomodoroSettings,
+    tasks,
+    stats,
+    completedRounds,
+    consecutiveStreak,
+    syncedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Apply cloud data to localStorage
+ */
+export function applySyncDataToLocalStorage(data: UserCloudSyncData): void {
+  try {
+    if (data.userName) {
+      localStorage.setItem(SYNC_KEYS.USER_NAME, data.userName);
+    }
+    if (data.isDarkMode !== undefined) {
+      localStorage.setItem(SYNC_KEYS.DARK_MODE, String(data.isDarkMode));
+    }
+    if (data.clockSettings) {
+      localStorage.setItem(SYNC_KEYS.CLOCK_SETTINGS, JSON.stringify(data.clockSettings));
+    }
+    if (data.pomodoroSettings) {
+      localStorage.setItem(SYNC_KEYS.POMODORO_SETTINGS, JSON.stringify(data.pomodoroSettings));
+    }
+    if (data.tasks && Array.isArray(data.tasks)) {
+      localStorage.setItem(SYNC_KEYS.TASKS, JSON.stringify(data.tasks));
+    }
+    if (data.stats) {
+      localStorage.setItem(SYNC_KEYS.STATS, JSON.stringify(data.stats));
+    }
+    if (data.completedRounds !== undefined || data.consecutiveStreak !== undefined) {
+      const existing = localStorage.getItem(SYNC_KEYS.ACTIVE_SESSION);
+      let sessionObj: Record<string, unknown> = {};
+      if (existing) {
+        try {
+          sessionObj = JSON.parse(existing);
+        } catch {
+          // ignore
+        }
+      }
+      sessionObj.completedRounds = data.completedRounds ?? sessionObj.completedRounds ?? 0;
+      sessionObj.consecutiveStreak = data.consecutiveStreak ?? sessionObj.consecutiveStreak ?? 0;
+      localStorage.setItem(SYNC_KEYS.ACTIVE_SESSION, JSON.stringify(sessionObj));
+    }
+    localStorage.setItem(LAST_SYNC_STORAGE_KEY, new Date().toISOString());
+  } catch (e) {
+    console.error('Failed to apply sync data to localStorage:', e);
+  }
+}
+
+/**
+ * Create a new @dek user account with optional current device data attached
+ */
+export async function createAccount(
+  rawUsername: string,
+  rawPassword: string,
+  rawDisplayName?: string,
+  currentLocalData?: UserCloudSyncData
+): Promise<{ account: UserAccount; syncData: UserCloudSyncData }> {
+  const username = formatUsername(rawUsername);
+  const uCheck = validateUsername(username);
+  if (!uCheck.isValid) {
+    throw new Error(uCheck.error || 'Invalid username');
+  }
+
+  const pCheck = validatePassword(rawPassword);
+  if (!pCheck.isValid) {
+    throw new Error(pCheck.error || 'Invalid password');
+  }
+
+  const docId = getAccountDocId(username);
+  const docRef = doc(db, 'accounts', docId);
+
+  // Check if account already exists
+  let existingDoc;
+  try {
+    existingDoc = await getDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, `accounts/${docId}`);
+  }
+
+  if (existingDoc.exists()) {
+    throw new Error(`An account with username "${username}" already exists. Please sign in instead.`);
+  }
+
+  const passwordHash = await hashPassword(rawPassword);
+  const displayName = rawDisplayName?.trim() || username.replace(/@dek$/, '');
+  const now = new Date().toISOString();
+  const avatarColor = getOrCreateAvatarColor();
+
+  const syncData = currentLocalData || collectCurrentLocalData();
+  // Ensure the user's name is in sync with displayName
+  syncData.userName = displayName;
+  syncData.syncedAt = now;
+
+  const account: UserAccount = {
+    username,
+    displayName,
+    avatarColor,
+    createdAt: now,
+    lastLoginAt: now,
+    updatedAt: now,
+  };
+
+  // Save to Firestore
+  try {
+    await setDoc(docRef, {
+      ...account,
+      passwordHash,
+      syncData,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `accounts/${docId}`);
+  }
+
+  // Save active session in localStorage
+  localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(account));
+  localStorage.setItem(SYNC_KEYS.USER_NAME, displayName);
+  localStorage.setItem(LAST_SYNC_STORAGE_KEY, now);
+
+  return { account, syncData };
+}
+
+/**
+ * Sign in with @dek credentials and sync cloud data to this device
+ */
+export async function signIn(
+  rawUsername: string,
+  rawPassword: string
+): Promise<{ account: UserAccount; syncData: UserCloudSyncData | null }> {
+  const username = formatUsername(rawUsername);
+  const uCheck = validateUsername(username);
+  if (!uCheck.isValid) {
+    throw new Error(uCheck.error || 'Invalid username');
+  }
+
+  const pCheck = validatePassword(rawPassword);
+  if (!pCheck.isValid) {
+    throw new Error(pCheck.error || 'Invalid password');
+  }
+
+  const docId = getAccountDocId(username);
+  const docRef = doc(db, 'accounts', docId);
+  let docSnap;
+  try {
+    docSnap = await getDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, `accounts/${docId}`);
+  }
+
+  if (!docSnap.exists()) {
+    throw new Error(`No account found for "${username}". Please check your username or create an account.`);
+  }
+
+  const data = docSnap.data();
+  const computedHash = await hashPassword(rawPassword);
+
+  if (data.passwordHash !== computedHash) {
+    throw new Error('Incorrect password. Please verify and try again.');
+  }
+
+  const now = new Date().toISOString();
+  const account: UserAccount = {
+    username: data.username,
+    displayName: data.displayName,
+    avatarColor: data.avatarColor || getOrCreateAvatarColor(),
+    createdAt: data.createdAt,
+    lastLoginAt: now,
+    updatedAt: data.updatedAt || now,
+  };
+
+  // Update last login in Firestore
+  try {
+    await updateDoc(docRef, { lastLoginAt: now });
+  } catch (e) {
+    console.debug('Failed to update lastLoginAt in Firestore:', e);
+  }
+
+  // Restore sync data to localStorage
+  const syncData: UserCloudSyncData | null = data.syncData || null;
+  if (syncData) {
+    applySyncDataToLocalStorage(syncData);
+  }
+
+  // Save active account
+  localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(account));
+  localStorage.setItem(SYNC_KEYS.USER_NAME, account.displayName);
+  localStorage.setItem(LAST_SYNC_STORAGE_KEY, now);
+
+  return { account, syncData };
+}
+
+/**
+ * Sync current local device data to cloud
+ */
+export async function syncLocalDataToCloud(
+  account: UserAccount,
+  customData?: UserCloudSyncData
+): Promise<void> {
+  const docId = getAccountDocId(account.username);
+  const docRef = doc(db, 'accounts', docId);
+  const now = new Date().toISOString();
+
+  const syncData = customData || collectCurrentLocalData();
+  syncData.syncedAt = now;
+
+  try {
+    await updateDoc(docRef, {
+      syncData,
+      updatedAt: now,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `accounts/${docId}`);
+  }
+
+  localStorage.setItem(LAST_SYNC_STORAGE_KEY, now);
+}
+
+/**
+ * Pull latest cloud data and restore locally
+ */
+export async function pullCloudDataToLocal(account: UserAccount): Promise<UserCloudSyncData | null> {
+  const docId = getAccountDocId(account.username);
+  const docRef = doc(db, 'accounts', docId);
+  let docSnap;
+  try {
+    docSnap = await getDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, `accounts/${docId}`);
+  }
+
+  if (!docSnap.exists()) return null;
+
+  const data = docSnap.data();
+  const syncData = data.syncData as UserCloudSyncData | undefined;
+
+  if (syncData) {
+    applySyncDataToLocalStorage(syncData);
+    return syncData;
+  }
+  return null;
+}
+
+/**
+ * Sign out of account and revert to guest mode
+ */
+export function signOut(): void {
+  localStorage.removeItem(ACCOUNT_STORAGE_KEY);
+  localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
+}

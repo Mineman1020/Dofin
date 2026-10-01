@@ -330,3 +330,24 @@ export interface PartyMessage {
   createdAt: string;
   isEncrypted?: boolean;
 }
+
+export interface UserAccount {
+  username: string; // must end with @dek, e.g. "alex@dek"
+  displayName: string;
+  avatarColor: string;
+  createdAt: string;
+  lastLoginAt: string;
+  updatedAt: string;
+}
+
+export interface UserCloudSyncData {
+  userName?: string;
+  isDarkMode?: boolean;
+  clockSettings?: ClockSettings;
+  pomodoroSettings?: PomodoroSettings;
+  tasks?: PomodoroTask[];
+  stats?: unknown;
+  completedRounds?: number;
+  consecutiveStreak?: number;
+  syncedAt: string;
+}

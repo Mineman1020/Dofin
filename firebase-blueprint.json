@@ -129,9 +129,58 @@
         }
       },
       "required": ["partyId", "senderId", "senderName", "text", "createdAt"]
+    },
+    "account": {
+      "title": "User Account",
+      "description": "User profile with credentials ending with @dek for cross-device authentication and productivity data synchronization.",
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "User account handle ending with @dek.",
+          "minLength": 5,
+          "maxLength": 60
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "passwordHash": {
+          "type": "string",
+          "description": "SHA-256 salted hash string of the user password.",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "avatarColor": {
+          "type": "string",
+          "description": "Avatar badge color."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Account registration timestamp."
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last successful login timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of most recent cloud data sync."
+        }
+      },
+      "required": ["username", "displayName", "passwordHash", "createdAt"]
     }
   },
   "firestore": {
+    "/accounts/{accountId}": {
+      "schema": "account",
+      "description": "Top-level collection storing @dek user accounts and their synced clock and pomodoro data."
+    },
     "/parties/{partyId}": {
       "schema": "party",
       "description": "Top-level collection storing study & work parties accessible by code."

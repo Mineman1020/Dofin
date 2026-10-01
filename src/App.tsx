@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Maximize2, Minimize2, Sparkles } from 'lucide-react';
-import { ViewMode, ClockSettings, PomodoroSettings } from './types';
+import { ViewMode, ClockSettings, PomodoroSettings, UserAccount, UserCloudSyncData } from './types';
 import {
   DEFAULT_CLOCK_SETTINGS,
   DEFAULT_POMODORO_SETTINGS,
@@ -13,11 +13,18 @@ import { TaskTrackerView } from './components/TaskTrackerView';
 import { StatsView } from './components/StatsView';
 import { SettingsModal } from './components/SettingsModal';
 import { NameModal } from './components/NameModal';
+import { AccountModal } from './components/AccountModal';
 import { PartyModal } from './components/PartyModal';
 import { StartupReveal } from './components/StartupReveal';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { usePomodoroTimer } from './utils/usePomodoroTimer';
 import { useFullscreen } from './utils/useFullscreen';
+import {
+  getActiveAccount,
+  signOut,
+  syncLocalDataToCloud,
+  pullCloudDataToLocal,
+} from './utils/accountService';
 
 const STORAGE_KEYS = {
   USER_NAME: 'desk_clock_user_name',
@@ -27,22 +34,38 @@ const STORAGE_KEYS = {
 };
 
 export default function App() {
+  // User Account state (null if in Guest Mode)
+  const [userAccount, setUserAccount] = useState<UserAccount | null>(() => {
+    return getActiveAccount();
+  });
+
   // User name state
   const [userName, setUserName] = useState<string>(() => {
     try {
+      const active = getActiveAccount();
+      if (active?.displayName) return active.displayName;
       return localStorage.getItem(STORAGE_KEYS.USER_NAME) || '';
     } catch {
       return '';
     }
   });
 
-  const [isNameModalOpen, setIsNameModalOpen] = useState<boolean>(() => {
+  // First-time Entry Account Modal: prompt user on first arrival to create account, sign in, or continue as guest
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(() => {
     try {
-      return !localStorage.getItem(STORAGE_KEYS.USER_NAME);
+      if (localStorage.getItem('desk_clock_account_v1')) return false;
+      const hasVisited =
+        localStorage.getItem('desk_clock_visited_v1') ||
+        localStorage.getItem(STORAGE_KEYS.USER_NAME);
+      return !hasVisited;
     } catch {
       return true;
     }
   });
+  const [accountModalMode, setAccountModalMode] = useState<'create' | 'login' | 'guest'>('create');
+  const [isAccountModalSettingsFlow, setIsAccountModalSettingsFlow] = useState<boolean>(false);
+
+  const [isNameModalOpen, setIsNameModalOpen] = useState<boolean>(false);
 
   // Dark Mode State - Default should be LIGHT mode as requested!
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -177,6 +200,84 @@ export default function App() {
     }
   };
 
+  // Account modal openers & handlers
+  const handleOpenAccountModal = (
+    mode: 'create' | 'login' | 'guest' = 'create',
+    isSettings = false
+  ) => {
+    setAccountModalMode(mode);
+    setIsAccountModalSettingsFlow(isSettings);
+    setIsAccountModalOpen(true);
+  };
+
+  const handleAccountSuccess = (
+    account: UserAccount,
+    syncData?: UserCloudSyncData | null
+  ) => {
+    setUserAccount(account);
+    setUserName(account.displayName);
+    try {
+      localStorage.setItem('desk_clock_visited_v1', 'true');
+      localStorage.setItem(STORAGE_KEYS.USER_NAME, account.displayName);
+    } catch (e) {
+      console.debug('Failed to save user info to localStorage:', e);
+    }
+
+    if (syncData) {
+      if (syncData.clockSettings) {
+        setClockSettings((prev) => ({ ...prev, ...syncData.clockSettings }));
+      }
+      if (syncData.pomodoroSettings) {
+        setPomodoroSettings((prev) => ({ ...prev, ...syncData.pomodoroSettings }));
+      }
+      if (syncData.isDarkMode !== undefined) {
+        setIsDarkMode(syncData.isDarkMode);
+      }
+    }
+    setIsAccountModalOpen(false);
+  };
+
+  const handleContinueAsGuest = (guestName: string) => {
+    const finalName = guestName.trim() || 'Guest';
+    setUserName(finalName);
+    try {
+      localStorage.setItem(STORAGE_KEYS.USER_NAME, finalName);
+      localStorage.setItem('desk_clock_visited_v1', 'true');
+    } catch (e) {
+      console.debug('Failed to save guest status:', e);
+    }
+    setIsAccountModalOpen(false);
+  };
+
+  const handleSignOutAccount = () => {
+    signOut();
+    setUserAccount(null);
+  };
+
+  const handleSyncAccount = async () => {
+    if (!userAccount) return;
+    await syncLocalDataToCloud(userAccount);
+  };
+
+  const handlePullCloudData = async () => {
+    if (!userAccount) return;
+    const syncData = await pullCloudDataToLocal(userAccount);
+    if (syncData) {
+      if (syncData.userName) {
+        setUserName(syncData.userName);
+      }
+      if (syncData.clockSettings) {
+        setClockSettings((prev) => ({ ...prev, ...syncData.clockSettings }));
+      }
+      if (syncData.pomodoroSettings) {
+        setPomodoroSettings((prev) => ({ ...prev, ...syncData.pomodoroSettings }));
+      }
+      if (syncData.isDarkMode !== undefined) {
+        setIsDarkMode(syncData.isDarkMode);
+      }
+    }
+  };
+
   // Update clock settings
   const handleUpdateClockSettings = (updated: Partial<ClockSettings>) => {
     setClockSettings((prev) => {
@@ -241,6 +342,10 @@ export default function App() {
       if (e.key === 'Escape') {
         if (isShortcutsOpen) {
           setIsShortcutsOpen(false);
+          return;
+        }
+        if (isAccountModalOpen && (userName || userAccount)) {
+          setIsAccountModalOpen(false);
           return;
         }
         if (isPartyModalOpen) {
@@ -447,6 +552,11 @@ export default function App() {
         onUpdatePomodoroSettings={handleUpdatePomodoroSettings}
         userName={userName}
         onOpenNameModal={() => setIsNameModalOpen(true)}
+        userAccount={userAccount}
+        onOpenAccountModal={(mode) => handleOpenAccountModal(mode, true)}
+        onSignOutAccount={handleSignOutAccount}
+        onSyncAccount={handleSyncAccount}
+        onPullCloudData={handlePullCloudData}
         onResetDefaults={handleResetDefaults}
         onReplayIntro={() => {
           setIsSettingsOpen(false);
@@ -454,6 +564,18 @@ export default function App() {
         }}
         isDarkMode={isDarkMode}
         onToggleDarkMode={handleToggleDarkMode}
+      />
+
+      {/* Account Modal for First-Time Entry, Settings Flow, and Cloud Sync */}
+      <AccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+        canDismiss={Boolean(userName || userAccount)}
+        initialMode={accountModalMode}
+        currentGuestName={userName}
+        isSettingsFlow={isAccountModalSettingsFlow}
+        onAccountSuccess={handleAccountSuccess}
+        onContinueAsGuest={handleContinueAsGuest}
       />
 
       {/* Study & Work Party & Leaderboard Modal */}

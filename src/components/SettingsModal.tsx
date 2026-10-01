@@ -43,6 +43,11 @@ import {
   MapPin,
   Search,
   CloudSun,
+  Cloud,
+  ShieldCheck,
+  LogOut,
+  ArrowRight,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   ClockSettings,
@@ -57,6 +62,7 @@ import {
   StopwatchWidgetStyle,
   WeatherWidgetStyle,
   WidgetTheme,
+  UserAccount,
 } from '../types';
 import {
   THEME_PRESETS,
@@ -84,6 +90,7 @@ import {
 } from '../utils/wallpaperStorage';
 import { processImageFile, isSupportedImageFile } from '../utils/imageProcessor';
 import { generateSubjectMask } from '../utils/subjectSegmenter';
+import { getLastSyncTime } from '../utils/accountService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -94,6 +101,11 @@ interface SettingsModalProps {
   onUpdatePomodoroSettings: (settings: Partial<PomodoroSettings>) => void;
   userName: string;
   onOpenNameModal: () => void;
+  onOpenAccountModal?: (mode?: 'create' | 'login' | 'guest') => void;
+  userAccount?: UserAccount | null;
+  onSignOutAccount?: () => void;
+  onSyncAccount?: () => Promise<void>;
+  onPullCloudData?: () => Promise<void>;
   onResetDefaults: () => void;
   onReplayIntro?: () => void;
   isDarkMode: boolean;
@@ -112,6 +124,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdatePomodoroSettings,
   userName,
   onOpenNameModal,
+  onOpenAccountModal,
+  userAccount,
+  onSignOutAccount,
+  onSyncAccount,
+  onPullCloudData,
   onResetDefaults,
   onReplayIntro,
   isDarkMode,
@@ -127,6 +144,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }, [isOpen, initialTab]);
   const [activeSoundPreviewPhase, setActiveSoundPreviewPhase] = useState<string | null>(null);
   const [previewPomoPhase, setPreviewPomoPhase] = useState<'work' | 'shortBreak' | 'longBreak'>('work');
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
 
   const fileInputWorkRef = useRef<HTMLInputElement | null>(null);
   const fileInputBreakRef = useRef<HTMLInputElement | null>(null);
@@ -715,7 +734,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             }`}
           >
             <Volume2 className="w-3.5 h-3.5" />
-            <span>Audio & Profile</span>
+            <span>Audio, Profile & Account</span>
           </button>
         </div>
 
@@ -3982,29 +4001,199 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 3: AUDIO & PROFILE */}
           {activeTab === 'general' && (
             <div className="space-y-6">
-              {/* Profile Card */}
-              <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
-                    <User className="w-5 h-5" />
+              {/* Account & Cloud Sync Section */}
+              <div
+                id="settings-account-card"
+                className="p-5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-4 shadow-sm relative overflow-hidden"
+              >
+                {/* Subtle Glow */}
+                <div className="absolute top-0 right-0 w-36 h-36 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-800/80">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 border ${
+                        userAccount
+                          ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
+                          : 'border-amber-500/30 text-amber-400 bg-amber-500/15'
+                      }`}
+                      style={userAccount ? { backgroundColor: `${userAccount.avatarColor}20`, borderColor: `${userAccount.avatarColor}50`, color: userAccount.avatarColor } : undefined}
+                    >
+                      {userAccount ? (
+                        userAccount.displayName.charAt(0).toUpperCase() || <Cloud className="w-5 h-5" />
+                      ) : (
+                        <User className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-white tracking-tight">
+                          {userAccount ? userAccount.displayName : (userName || 'Guest User')}
+                        </h4>
+                        {userAccount ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Cloud Synced
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-neutral-800 border border-neutral-700 text-neutral-400">
+                            Guest Mode (Local)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        {userAccount ? (
+                          <span className="font-mono text-amber-400/90">{userAccount.username}</span>
+                        ) : (
+                          'Progress is currently saved locally on this browser'
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-xs text-neutral-400 block">Current User Name</span>
-                    <span className="text-sm font-semibold text-white">
-                      {userName || 'Anonymous'}
-                    </span>
+
+                  {/* Top Right Quick Actions */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenNameModal();
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-[11px] font-medium text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                      title="Change your local display name"
+                    >
+                      Change Name
+                    </button>
+                    {userAccount && onSignOutAccount && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          onSignOutAccount();
+                          setSyncStatusMsg('Signed out. Switched to Guest Mode.');
+                          setTimeout(() => setSyncStatusMsg(null), 3500);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-[11px] font-medium text-rose-300 transition-colors cursor-pointer flex items-center gap-1"
+                        title="Sign out and return to Guest mode"
+                      >
+                        <LogOut className="w-3 h-3" />
+                        <span>Sign Out</span>
+                      </button>
+                    )}
                   </div>
                 </div>
-                <button
-                  id="change-name-btn"
-                  onClick={() => {
-                    onClose();
-                    onOpenNameModal();
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs font-medium text-neutral-200 cursor-pointer transition-colors"
-                >
-                  Change Name
-                </button>
+
+                {/* Cloud Sync Description & Actions */}
+                {!userAccount ? (
+                  <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-3.5 space-y-3">
+                    <div className="flex items-start gap-2.5 text-xs text-amber-200/90 leading-relaxed">
+                      <Cloud className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-amber-300 font-semibold block mb-0.5">
+                          Sync Your Existing Progress to Any Device
+                        </strong>
+                        <p className="text-neutral-300 text-xs">
+                          You are currently using Desk Clock as a guest without signing in. To sync all the clock preferences, themes, pomodoro sessions, checklists, and streaks you already have gathered, create an account ending with <strong>@dek</strong>!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        id="settings-create-account-btn"
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenAccountModal?.('create');
+                        }}
+                        className="apple-hover px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+                      >
+                        <Cloud className="w-3.5 h-3.5" />
+                        <span>Create @dek Account (Sync Progress)</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        id="settings-login-account-btn"
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenAccountModal?.('login');
+                        }}
+                        className="apple-hover px-3.5 py-2 rounded-xl border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-white font-medium text-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Sign In to Existing Account</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3 pt-1">
+                    <div className="flex items-center justify-between text-xs text-neutral-400">
+                      <span className="flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                        <span>Connected to Firebase Firestore Cloud</span>
+                      </span>
+                      <span className="font-mono text-[11px] text-neutral-500">
+                        {getLastSyncTime() ? `Last synced: ${new Date(getLastSyncTime()!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Synced'}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        id="settings-sync-now-btn"
+                        type="button"
+                        disabled={isSyncing}
+                        onClick={async () => {
+                          if (!onSyncAccount) return;
+                          setIsSyncing(true);
+                          try {
+                            await onSyncAccount();
+                            setSyncStatusMsg('Data successfully backed up to @dek cloud!');
+                            setTimeout(() => setSyncStatusMsg(null), 3500);
+                          } catch {
+                            setSyncStatusMsg('Failed to sync. Please check your connection.');
+                          } finally {
+                            setIsSyncing(false);
+                          }
+                        }}
+                        className="apple-hover px-3.5 py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                        <span>Sync Current Progress Now</span>
+                      </button>
+
+                      {onPullCloudData && (
+                        <button
+                          id="settings-pull-cloud-btn"
+                          type="button"
+                          disabled={isSyncing}
+                          onClick={async () => {
+                            setIsSyncing(true);
+                            try {
+                              await onPullCloudData();
+                              setSyncStatusMsg('Restored latest data from @dek cloud!');
+                              setTimeout(() => setSyncStatusMsg(null), 3500);
+                            } catch {
+                              setSyncStatusMsg('Failed to pull cloud data.');
+                            } finally {
+                              setIsSyncing(false);
+                            }
+                          }}
+                          className="apple-hover px-3.5 py-1.5 rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-medium text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          <Cloud className="w-3.5 h-3.5" />
+                          <span>Pull Cloud Data</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {syncStatusMsg && (
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium animate-fadeIn">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{syncStatusMsg}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Ambient Sounds */}
