@@ -4084,20 +4084,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 {/* Cloud Sync Description & Actions */}
                 {!userAccount ? (
-                  <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-3.5 space-y-3">
-                    <div className="flex items-start gap-2.5 text-xs text-amber-200/90 leading-relaxed">
-                      <Cloud className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      <div>
-                        <strong className="text-amber-300 font-semibold block mb-0.5">
-                          Sync Your Existing Progress to Any Device
+                  <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-4 space-y-3.5">
+                    <div className="flex items-start gap-3 text-xs text-amber-200/90 leading-relaxed">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                        <Cloud className="w-4 h-4" />
+                      </div>
+                      <div className="space-y-1.5 flex-1">
+                        <strong className="text-amber-300 font-bold block text-sm">
+                          Create an Account with Your Existing Progress
                         </strong>
-                        <p className="text-neutral-300 text-xs">
-                          You are currently using Desk Clock as a guest without signing in. To sync all the clock preferences, themes, pomodoro sessions, checklists, and streaks you already have gathered, create an account ending with <strong>@dek</strong>!
+                        <p className="text-neutral-300 text-xs leading-relaxed">
+                          You are currently in <strong>Guest Mode</strong>, using the app without signing in. The system is remembering all your custom clock styles, Pomodoro intervals, task checklists, and focus stats locally on this device.
                         </p>
+                        <div className="bg-black/40 rounded-xl p-2.5 border border-amber-500/20 text-[11px] text-amber-200/90 space-y-1">
+                          <span className="font-semibold text-amber-300 block">How to create your account:</span>
+                          <p>
+                            Enter a username which will end with <strong className="font-mono text-amber-300">@dek</strong> (e.g. <span className="font-mono text-amber-300">yourname@dek</span>) and a password. You can use these credentials to log in on any device (laptop, phone, tablet) and all the progress you already have gathered will be automatically synced!
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
                       <button
                         id="settings-create-account-btn"
                         type="button"
@@ -4105,10 +4113,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           onClose();
                           onOpenAccountModal?.('create');
                         }}
-                        className="apple-hover px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+                        className="apple-hover px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer"
                       >
-                        <Cloud className="w-3.5 h-3.5" />
-                        <span>Create @dek Account (Sync Progress)</span>
+                        <Cloud className="w-4 h-4" />
+                        <span>Create @dek Account (Keep My Progress)</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
 
@@ -4119,9 +4127,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           onClose();
                           onOpenAccountModal?.('login');
                         }}
-                        className="apple-hover px-3.5 py-2 rounded-xl border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-white font-medium text-xs flex items-center gap-1.5 cursor-pointer"
+                        className="apple-hover px-3.5 py-2.5 rounded-xl border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-white font-medium text-xs flex items-center gap-1.5 cursor-pointer"
                       >
-                        <span>Sign In to Existing Account</span>
+                        <User className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>Sign In to Existing @dek Account</span>
                       </button>
                     </div>
                   </div>

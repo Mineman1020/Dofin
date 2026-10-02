@@ -51,19 +51,27 @@ export default function App() {
   });
 
   // First-time Entry Account Modal: prompt user on first arrival to create account, sign in, or continue as guest
-  const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(() => {
-    try {
-      if (localStorage.getItem('desk_clock_account_v1')) return false;
-      const hasVisited =
-        localStorage.getItem('desk_clock_visited_v1') ||
-        localStorage.getItem(STORAGE_KEYS.USER_NAME);
-      return !hasVisited;
-    } catch {
-      return true;
-    }
-  });
+  const [showStartupReveal, setShowStartupReveal] = useState<boolean>(true);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
   const [accountModalMode, setAccountModalMode] = useState<'create' | 'login' | 'guest'>('create');
   const [isAccountModalSettingsFlow, setIsAccountModalSettingsFlow] = useState<boolean>(false);
+
+  // Check if first-time onboarding prompt should be displayed once reveal is complete
+  useEffect(() => {
+    if (!showStartupReveal) {
+      try {
+        const hasAccount = localStorage.getItem('desk_clock_account_v1');
+        const hasVisited =
+          localStorage.getItem('desk_clock_visited_v1') ||
+          localStorage.getItem(STORAGE_KEYS.USER_NAME);
+        if (!hasAccount && !hasVisited) {
+          setIsAccountModalOpen(true);
+        }
+      } catch (e) {
+        console.debug('Error checking first-time visit status:', e);
+      }
+    }
+  }, [showStartupReveal]);
 
   const [isNameModalOpen, setIsNameModalOpen] = useState<boolean>(false);
 
@@ -82,9 +90,6 @@ export default function App() {
 
   // Active view: 'welcome' | 'clock' | 'pomodoro'
   const [currentView, setCurrentView] = useState<ViewMode>('welcome');
-
-  // Cinematic Startup Reveal
-  const [showStartupReveal, setShowStartupReveal] = useState<boolean>(true);
 
   // Settings modal visibility
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -439,16 +444,18 @@ export default function App() {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={currentView}
-          initial={{ opacity: 0, scale: 0.99, y: 6 }}
+          initial={{ opacity: 0, scale: 0.99, y: 4 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 1.008, y: -6 }}
-          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          exit={{ opacity: 0, scale: 1.008, y: -4 }}
+          transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
           className={`w-full ${canScroll ? 'min-h-screen flex flex-col' : 'h-full flex flex-col overflow-hidden'}`}
         >
           {/* 1. Welcome Screen */}
           {currentView === 'welcome' && (
             <WelcomeScreen
               userName={userName || 'Friend'}
+              userAccount={userAccount}
+              onOpenAccountModal={() => handleOpenAccountModal('create', false)}
               onSelectMode={(mode) => setCurrentView(mode)}
               onOpenSettings={() => handleOpenSettings()}
               onOpenParties={handleOpenParties}
@@ -605,7 +612,20 @@ export default function App() {
       {showStartupReveal && (
         <StartupReveal
           isDarkMode={isDarkMode}
-          onComplete={() => setShowStartupReveal(false)}
+          onComplete={() => {
+            setShowStartupReveal(false);
+            try {
+              const hasAccount = localStorage.getItem('desk_clock_account_v1');
+              const hasVisited =
+                localStorage.getItem('desk_clock_visited_v1') ||
+                localStorage.getItem(STORAGE_KEYS.USER_NAME);
+              if (!hasAccount && !hasVisited) {
+                setIsAccountModalOpen(true);
+              }
+            } catch {
+              // ignore
+            }
+          }}
         />
       )}
 

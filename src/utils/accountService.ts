@@ -1,6 +1,7 @@
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db, getOrCreateAvatarColor } from './firebase';
-import { UserAccount, UserCloudSyncData } from '../types';
+import { UserAccount, UserCloudSyncData, PomodoroTask } from '../types';
+import { DEFAULT_CLOCK_SETTINGS, DEFAULT_POMODORO_SETTINGS } from './constants';
 
 export enum OperationType {
   CREATE = 'create',
@@ -44,6 +45,21 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
+}
+
+/**
+ * Recursively remove or convert undefined values to prevent Firestore 'Unsupported field value: undefined' errors
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as unknown as T;
+  }
+  return JSON.parse(
+    JSON.stringify(data, (_key, value) => {
+      if (value === undefined) return null;
+      return value;
+    })
+  );
 }
 
 const ACCOUNT_STORAGE_KEY = 'desk_clock_account_v1';
@@ -166,10 +182,10 @@ export function getLastSyncTime(): string | null {
  * Collect all current local storage data into a sync packet
  */
 export function collectCurrentLocalData(): UserCloudSyncData {
-  let clockSettings;
-  let pomodoroSettings;
-  let tasks;
-  let stats;
+  let clockSettings = { ...DEFAULT_CLOCK_SETTINGS };
+  let pomodoroSettings = { ...DEFAULT_POMODORO_SETTINGS };
+  let tasks: PomodoroTask[] = [];
+  let stats: unknown = null;
   let isDarkMode = false;
   let userName = '';
   let completedRounds = 0;
@@ -177,16 +193,40 @@ export function collectCurrentLocalData(): UserCloudSyncData {
 
   try {
     const rawClock = localStorage.getItem(SYNC_KEYS.CLOCK_SETTINGS);
-    if (rawClock) clockSettings = JSON.parse(rawClock);
+    if (rawClock) {
+      try {
+        clockSettings = { ...DEFAULT_CLOCK_SETTINGS, ...JSON.parse(rawClock) };
+      } catch (e) {
+        console.debug('Error reading clock settings:', e);
+      }
+    }
 
     const rawPomo = localStorage.getItem(SYNC_KEYS.POMODORO_SETTINGS);
-    if (rawPomo) pomodoroSettings = JSON.parse(rawPomo);
+    if (rawPomo) {
+      try {
+        pomodoroSettings = { ...DEFAULT_POMODORO_SETTINGS, ...JSON.parse(rawPomo) };
+      } catch (e) {
+        console.debug('Error reading pomodoro settings:', e);
+      }
+    }
 
     const rawTasks = localStorage.getItem(SYNC_KEYS.TASKS);
-    if (rawTasks) tasks = JSON.parse(rawTasks);
+    if (rawTasks) {
+      try {
+        tasks = JSON.parse(rawTasks);
+      } catch (e) {
+        console.debug('Error reading tasks:', e);
+      }
+    }
 
     const rawStats = localStorage.getItem(SYNC_KEYS.STATS);
-    if (rawStats) stats = JSON.parse(rawStats);
+    if (rawStats) {
+      try {
+        stats = JSON.parse(rawStats);
+      } catch (e) {
+        console.debug('Error reading stats:', e);
+      }
+    }
 
     const rawDark = localStorage.getItem(SYNC_KEYS.DARK_MODE);
     if (rawDark !== null) isDarkMode = rawDark === 'true';
@@ -195,15 +235,19 @@ export function collectCurrentLocalData(): UserCloudSyncData {
 
     const rawSession = localStorage.getItem(SYNC_KEYS.ACTIVE_SESSION);
     if (rawSession) {
-      const sess = JSON.parse(rawSession);
-      completedRounds = sess.completedRounds || 0;
-      consecutiveStreak = sess.consecutiveStreak || 0;
+      try {
+        const sess = JSON.parse(rawSession);
+        completedRounds = sess.completedRounds || 0;
+        consecutiveStreak = sess.consecutiveStreak || 0;
+      } catch (e) {
+        console.debug('Error reading active session:', e);
+      }
     }
   } catch (e) {
     console.debug('Error collecting local data for sync:', e);
   }
 
-  return {
+  const result: UserCloudSyncData = {
     userName,
     isDarkMode,
     clockSettings,
@@ -214,6 +258,8 @@ export function collectCurrentLocalData(): UserCloudSyncData {
     consecutiveStreak,
     syncedAt: new Date().toISOString(),
   };
+
+  return sanitizeForFirestore(result);
 }
 
 /**
@@ -290,16 +336,16 @@ export async function createAccount(
     handleFirestoreError(error, OperationType.GET, `accounts/${docId}`);
   }
 
-  if (existingDoc.exists()) {
+  if (existingDoc && existingDoc.exists()) {
     throw new Error(`An account with username "${username}" already exists. Please sign in instead.`);
   }
 
   const passwordHash = await hashPassword(rawPassword);
-  const displayName = rawDisplayName?.trim() || username.replace(/@dek$/, '');
+  const displayName = (rawDisplayName?.trim() || username.replace(/@dek$/, '') || 'User').slice(0, 40);
   const now = new Date().toISOString();
   const avatarColor = getOrCreateAvatarColor();
 
-  const syncData = currentLocalData || collectCurrentLocalData();
+  const syncData = sanitizeForFirestore(currentLocalData || collectCurrentLocalData());
   // Ensure the user's name is in sync with displayName
   syncData.userName = displayName;
   syncData.syncedAt = now;
@@ -313,13 +359,15 @@ export async function createAccount(
     updatedAt: now,
   };
 
+  const payload = sanitizeForFirestore({
+    ...account,
+    passwordHash,
+    syncData,
+  });
+
   // Save to Firestore
   try {
-    await setDoc(docRef, {
-      ...account,
-      passwordHash,
-      syncData,
-    });
+    await setDoc(docRef, payload);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `accounts/${docId}`);
   }
@@ -412,7 +460,7 @@ export async function syncLocalDataToCloud(
   const docRef = doc(db, 'accounts', docId);
   const now = new Date().toISOString();
 
-  const syncData = customData || collectCurrentLocalData();
+  const syncData = sanitizeForFirestore(customData || collectCurrentLocalData());
   syncData.syncedAt = now;
 
   try {

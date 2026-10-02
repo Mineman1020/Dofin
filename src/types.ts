@@ -255,7 +255,7 @@ export interface PomodoroSettings {
   customLongBreakColor?: string;
   ringWidth?: number; // e.g. 4, 8, 12, 16
   enableGlow?: boolean;
-  idleMinimalMode?: boolean; // When idle for 30s while running: hide taskbar, controls, and expand into glowing edge rectangle (default: true)
+  idleMinimalMode?: boolean; // When idle for 15s while running: hide taskbar, controls, and expand into glowing edge rectangle (default: true)
 
   // Ambient atmosphere settings for Pomodoro
   ambientTheme?: AmbientThemeId;
@@ -267,10 +267,15 @@ export interface PomodoroSettings {
 
 export type PomodoroPhase = 'work' | 'shortBreak' | 'longBreak';
 
+export type TaskDifficulty = 'easy' | 'medium' | 'hard' | 'expert';
+
+export type DeviceType = 'mobile' | 'pc';
+
 export interface PomodoroTask {
   id: string;
   title: string;
   description?: string;
+  difficulty?: TaskDifficulty;
   estimatedPomodoros: number;
   completedPomodoros: number;
   isCompleted: boolean;

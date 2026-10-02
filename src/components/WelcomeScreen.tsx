@@ -19,6 +19,7 @@ import {
   BarChart3,
   Keyboard,
   Sparkles,
+  Cloud,
 } from 'lucide-react';
 import { ClockSettings, PomodoroSettings, ViewMode, UserAccount } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS, FONT_OPTICAL_SCALES } from '../utils/constants';
@@ -157,6 +158,8 @@ const InteractiveModeCard: React.FC<InteractiveModeCardProps> = ({
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   userName,
+  userAccount,
+  onOpenAccountModal,
   onSelectMode,
   onOpenSettings,
   onOpenNameModal,
@@ -288,6 +291,38 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Account status button */}
+          {userAccount ? (
+            <button
+              id="welcome-account-btn"
+              onClick={onOpenSettings}
+              className={`apple-hover flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono cursor-pointer shadow-sm ${
+                isDarkMode
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  : 'border-emerald-300 bg-emerald-50 text-emerald-800'
+              }`}
+              title="Cloud Synced Account"
+            >
+              <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="truncate max-w-[120px]">{userAccount.username}</span>
+            </button>
+          ) : (
+            <button
+              id="welcome-account-btn"
+              onClick={() => (onOpenAccountModal ? onOpenAccountModal() : onOpenSettings())}
+              className={`apple-hover flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs cursor-pointer shadow-sm ${
+                isDarkMode
+                  ? 'border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300'
+                  : 'border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900'
+              }`}
+              title="You are in Guest Mode. Click to create an @dek account or sign in to sync"
+            >
+              <Cloud className="w-3.5 h-3.5 text-amber-500" />
+              <span className="hidden sm:inline font-medium">Guest Mode • Sync</span>
+              <span className="sm:hidden font-medium">Sync</span>
+            </button>
+          )}
+
           {/* User profile button */}
           <button
             id="welcome-user-profile-btn"
@@ -382,6 +417,35 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             Select your workspace mode below to begin.
           </p>
         </motion.div>
+
+        {/* Guest Mode Info & Cloud Sync Callout */}
+        {!userAccount && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mb-5 p-3 sm:px-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs w-full max-w-5xl mx-auto ${
+              isDarkMode
+                ? 'bg-neutral-900/60 border-neutral-800 text-neutral-300'
+                : 'bg-white/80 border-neutral-200/90 text-neutral-700 shadow-sm'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span>
+                <strong>Guest Mode Active:</strong> All your clock settings and focus stats are remembered on this device.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => (onOpenAccountModal ? onOpenAccountModal() : onOpenSettings())}
+              className="apple-hover px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 font-semibold border border-amber-500/30 text-xs cursor-pointer transition-colors flex items-center gap-1.5 shrink-0"
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              <span>Create @dek Account to Sync</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </motion.div>
+        )}
 
         {/* 2x2 Grid of Main Modes with Dynamic Cursor-Tracking Craft */}
         <motion.div

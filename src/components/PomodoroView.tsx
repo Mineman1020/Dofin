@@ -32,6 +32,8 @@ import {
   Party,
   AmbientThemeId,
   AmbientThemePreset,
+  DeviceType,
+  TaskDifficulty,
 } from '../types';
 import {
   triggerSoundAlert,
@@ -77,6 +79,8 @@ interface PomodoroViewProps {
   onToggleDarkMode: () => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  deviceMode?: DeviceType;
+  onToggleDeviceMode?: (mode: DeviceType) => void;
 }
 
 const TASKS_STORAGE_KEY = 'desk_clock_pomodoro_tasks_v1';
@@ -98,6 +102,8 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   onToggleDarkMode,
   isFullscreen: propIsFullscreen,
   onToggleFullscreen: propToggleFullscreen,
+  deviceMode = 'pc',
+  onToggleDeviceMode,
 }) => {
   const {
     phase,
@@ -183,6 +189,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   const [newTaskTitle, setNewTaskTitle] = useState<string>('');
   const [newTaskDescription, setNewTaskDescription] = useState<string>('');
   const [newTaskEst, setNewTaskEst] = useState<number>(1);
+  const [newTaskDifficulty, setNewTaskDifficulty] = useState<TaskDifficulty>('medium');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState<boolean>(false);
   const [hoveredTask, setHoveredTask] = useState<PomodoroTask | null>(null);
   const [displayTask, setDisplayTask] = useState<PomodoroTask | null>(null);
@@ -220,15 +227,15 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     }
   }, [hoveredTask]);
 
-  // Top access bar hover detection: smooth and adaptive with gentle hysteresis
+  // Top access bar hover detection: smooth, soft and adaptive with gentle hysteresis
   const [isPointerAtTop, setIsPointerAtTop] = useState<boolean>(false);
   const headerRef = useRef<HTMLElement | null>(null);
   const topBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const handlePointerMove = (e: MouseEvent) => {
-      // Trigger smoothly when pointer is moved up to top region (<= 75px)
-      const isNearTop = e.clientY <= 75;
+      // Trigger smoothly when pointer is moved up to top region (<= 65px)
+      const isNearTop = e.clientY <= 65;
       const isOverHeader = headerRef.current ? headerRef.current.contains(e.target as Node) : false;
 
       if (isNearTop || isOverHeader) {
@@ -237,13 +244,13 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           topBarTimerRef.current = null;
         }
         setIsPointerAtTop(true);
-      } else if (e.clientY > 105) {
-        // Adaptive exit hysteresis: smoothly close with a gentle 160ms debounce
+      } else if (e.clientY > 115) {
+        // Adaptive exit hysteresis: smoothly close with a gentle 360ms debounce
         if (!topBarTimerRef.current && isPointerAtTop) {
           topBarTimerRef.current = setTimeout(() => {
             setIsPointerAtTop(false);
             topBarTimerRef.current = null;
-          }, 160);
+          }, 360);
         }
       }
     };
@@ -255,7 +262,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     };
   }, [isPointerAtTop]);
 
-  // Zen Mode (30 seconds of inactivity when timer is running - adaptive exit)
+  // Zen Mode (15 seconds of inactivity when timer is running - adaptive exit)
   const [isZenIdle, setIsZenIdle] = useState<boolean>(false);
   const isZenEnabled = settings.idleMinimalMode !== false;
 
@@ -271,13 +278,17 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       clearTimeout(zenTimer);
       zenTimer = setTimeout(() => {
         setIsZenIdle(true);
-      }, 30000); // 30 seconds of being idle
+      }, 15000); // 15 seconds of being idle (for both mobile and pc)
     };
 
     let lastPos = { x: 0, y: 0 };
     let hasPos = false;
 
     const handleMouseMove = (e: MouseEvent) => {
+      // In mobile mode when Zen Idle is active, ignore pointer/touch simulations!
+      if (deviceMode === 'mobile' && isZenIdle) {
+        return;
+      }
       if (!hasPos) {
         lastPos = { x: e.clientX, y: e.clientY };
         hasPos = true;
@@ -293,6 +304,11 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     };
 
     const handleDiscreteActivity = () => {
+      // In mobile mode when Zen Idle is active, the rest of the screen MUST NOT sense touch!
+      // Only the dedicated small circle button exits the idle screen.
+      if (deviceMode === 'mobile' && isZenIdle) {
+        return;
+      }
       setIsZenIdle(false);
       startZenTimer();
     };
@@ -311,7 +327,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       window.removeEventListener('keydown', handleDiscreteActivity);
       window.removeEventListener('touchstart', handleDiscreteActivity);
     };
-  }, [isRunning, isZenEnabled, isTaskModalOpen]);
+  }, [isRunning, isZenEnabled, isTaskModalOpen, deviceMode, isZenIdle]);
 
   // Idle timer: hide non-essential elements when user is inactive, keep clock, counter, controls & tasks visible
   useEffect(() => {
@@ -402,6 +418,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       id: Date.now().toString(),
       title: trimmed,
       description: newTaskDescription.trim() || undefined,
+      difficulty: newTaskDifficulty,
       estimatedPomodoros: Math.max(1, newTaskEst),
       completedPomodoros: 0,
       isCompleted: false,
@@ -415,6 +432,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     setNewTaskTitle('');
     setNewTaskDescription('');
     setNewTaskEst(1);
+    setNewTaskDifficulty('medium');
     setIsTaskModalOpen(false);
   };
 
@@ -504,7 +522,8 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   const selectedFont =
     FONT_OPTIONS.find((f) => f.id === (settings.fontFamily || 'outfit')) || FONT_OPTIONS[0];
 
-  const circleDiameter = settings.circleSize || 320;
+  const baseCircleDiameter = settings.circleSize || 320;
+  const circleDiameter = deviceMode === 'mobile' ? Math.min(baseCircleDiameter, 250) : baseCircleDiameter;
   const strokeWidth = settings.ringWidth || 8;
   const radius = Math.max(60, (circleDiameter - strokeWidth * 2 - 16) / 2);
   const circumference = 2 * Math.PI * radius;
@@ -554,7 +573,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   const screenStrokeDashoffset = screenPerimeter * (1 - clampedProgress);
 
   // Proportional left shift for the timer circle on desktop, so larger circle sizes never look clumsy or crowded against controls
-  const timerLeftShift = isLgScreen
+  const timerLeftShift = isLgScreen && deviceMode !== 'mobile'
     ? Math.max(18, Math.min(84, Math.round(22 + Math.max(0, circleDiameter - 320) * 0.14)))
     : 0;
 
@@ -622,7 +641,10 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     return { titleSize, descSize, badgeSize, gap, maxDescLines };
   }, [displayTask, circleDiameter]);
 
-  const canScroll = !isFullscreen && clockSettings?.enableScrolling !== false;
+  // Mobile users can scroll even in fullscreen, but scrolling is disabled during Zen Idle clock mode
+  const canScroll =
+    !isZenIdle &&
+    (deviceMode === 'mobile' || (!isFullscreen && clockSettings?.enableScrolling !== false));
 
   return (
     <div
@@ -662,19 +684,41 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         />
       )}
 
-      {/* Top Hover Sensor Trigger Zone: Ensures access bar drops smoothly as soon as pointer moves to the top edge */}
-      <div
-        className="fixed top-0 left-0 right-0 h-7 z-40 pointer-events-auto"
-        onMouseEnter={() => {
-          if (topBarTimerRef.current) {
-            clearTimeout(topBarTimerRef.current);
-            topBarTimerRef.current = null;
-          }
-          setIsPointerAtTop(true);
-        }}
-      />
+      {/* Mobile Top Access Bar Trigger Pill (Allows easy tap-to-access on touch devices) */}
+      {deviceMode === 'mobile' && !isZenIdle && (
+        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
+          <button
+            id="pomodoro-mobile-access-bar-btn"
+            type="button"
+            onClick={() => setIsPointerAtTop((prev) => !prev)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-mono font-medium backdrop-blur-md border shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all ${
+              isPointerAtTop
+                ? 'bg-amber-500/25 border-amber-500/50 text-amber-300'
+                : resolvedTheme.isDark
+                ? 'bg-neutral-900/85 border-neutral-700/80 text-neutral-200'
+                : 'bg-white/90 border-neutral-300 text-neutral-800'
+            }`}
+          >
+            <span>{isPointerAtTop ? 'Hide Menu ▲' : 'Menu & Settings ▼'}</span>
+          </button>
+        </div>
+      )}
 
-      {/* Top Header Bar (Drops smoothly down when pointer moves up) */}
+      {/* Top Hover Sensor Trigger Zone: Ensures access bar drops smoothly as soon as pointer moves to the top edge (PC Mode) */}
+      {deviceMode !== 'mobile' && (
+        <div
+          className="fixed top-0 left-0 right-0 h-10 z-40 pointer-events-auto"
+          onMouseEnter={() => {
+            if (topBarTimerRef.current) {
+              clearTimeout(topBarTimerRef.current);
+              topBarTimerRef.current = null;
+            }
+            setIsPointerAtTop(true);
+          }}
+        />
+      )}
+
+      {/* Top Header Bar (Drops softly and smoothly down when pointer moves up) */}
       <header
         ref={headerRef}
         id="pomodoro-header"
@@ -685,10 +729,19 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           }
           setIsPointerAtTop(true);
         }}
-        className={`fixed top-0 left-0 right-0 px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between z-50 border-b backdrop-blur-md transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        onMouseLeave={() => {
+          if (topBarTimerRef.current) {
+            clearTimeout(topBarTimerRef.current);
+          }
+          topBarTimerRef.current = setTimeout(() => {
+            setIsPointerAtTop(false);
+            topBarTimerRef.current = null;
+          }, 360);
+        }}
+        className={`fixed top-0 left-0 right-0 px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between z-50 border-b backdrop-blur-xl transition-all duration-600 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[transform,opacity] ${
           isPointerAtTop
-            ? 'translate-y-0 pointer-events-auto shadow-2xl'
-            : '-translate-y-full pointer-events-none'
+            ? 'translate-y-0 opacity-100 pointer-events-auto shadow-2xl shadow-black/15'
+            : '-translate-y-full opacity-0 pointer-events-none shadow-none'
         } ${
           resolvedTheme.isDark
             ? 'border-neutral-900/80 bg-neutral-950/85 text-white'
@@ -800,19 +853,21 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         </div>
       </header>
 
-      {/* Zen Idle Focus Mode: Attached to the Corners of the Screen, Clean Progress Ring, Only Centered Digits (Smooth Adaptive Transition) */}
+      {/* Zen Idle Focus Mode: Attached to the Corners of the Screen, Clean Progress Ring, Only Centered Digits (Soft & Smooth Transition) */}
       <div
         id="pomodoro-zen-mode"
         aria-hidden={!isZenIdle}
-        className={`fixed inset-0 z-30 pointer-events-none flex items-center justify-center transition-[transform,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform] ${
+        className={`fixed inset-0 z-30 pointer-events-none flex items-center justify-center transition-[transform,opacity] duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform] ${
           isZenIdle
             ? 'opacity-100 scale-100 pointer-events-auto'
-            : 'opacity-0 scale-[1.03] pointer-events-none'
+            : 'opacity-0 scale-[0.96] pointer-events-none'
         }`}
       >
         {/* Screen-Attached Perimeter Ring (Lighted up all the time, visible moving progress, reduced glare) */}
         <svg
-          className="fixed inset-0 w-full h-full pointer-events-none z-20"
+          className={`fixed inset-0 w-full h-full pointer-events-none z-20 transition-opacity duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            isZenIdle ? 'opacity-100' : 'opacity-0'
+          }`}
           viewBox={`0 0 ${screenSize.width} ${screenSize.height}`}
         >
           {/* Subtle background border track along screen edges */}
@@ -864,7 +919,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
         {/* Center of Screen: ONLY the timer digits (no badges, no task info, no buttons) */}
         <div
           id="pomodoro-zen-digits"
-          className="font-black tracking-tight flex items-center justify-center select-none text-center tabular-nums leading-none z-30 transition-[transform,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          className="font-black tracking-tight flex items-center justify-center select-none text-center tabular-nums leading-none z-30 transition-[transform,opacity] duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]"
           style={{
             fontFamily: selectedFont.cssFamily,
             color: resolvedTheme.textColor,
@@ -878,32 +933,47 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           <span className="opacity-60 mx-1 sm:mx-2 animate-pulse">:</span>
           <span>{formattedSeconds}</span>
         </div>
+
+        {/* Mobile Tap-To-Exit Idle Circle Button (Only tapping this circle exits idle mode on mobile) */}
+        {deviceMode === 'mobile' && isZenIdle && (
+          <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-auto z-40 animate-fadeIn">
+            <button
+              id="pomodoro-mobile-exit-idle-btn"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsZenIdle(false);
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                setIsZenIdle(false);
+              }}
+              className="w-14 h-14 rounded-full border-2 border-white/60 bg-neutral-900/90 backdrop-blur-md text-white flex items-center justify-center shadow-2xl active:scale-90 transition-transform cursor-pointer ring-4 ring-white/10"
+              title="Tap circle to exit idle screen"
+            >
+              <span className="w-5 h-5 rounded-full border-2 border-white/70 flex items-center justify-center">
+                <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+              </span>
+            </button>
+            <span className="text-[11px] font-mono tracking-wider uppercase text-neutral-300 bg-black/60 px-3 py-1 rounded-full backdrop-blur-md border border-white/10 select-none">
+              Tap circle to wake
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Main Pomodoro & Controls Container (Smooth adaptive transition, subtle downward shift for top bar) */}
+      {/* Main Pomodoro & Controls Container (Smooth adaptive transition with fixed stable padding to prevent any abrupt jerks) */}
       <main
-        className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col items-center justify-center z-10 transition-[transform,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform] ${
+        className={`flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col items-center justify-center z-10 pt-14 sm:pt-16 pb-6 sm:pb-8 transition-[transform,opacity] duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform] ${
           isZenIdle
-            ? 'opacity-0 scale-[0.97] pointer-events-none'
+            ? 'opacity-0 scale-[0.98] pointer-events-none'
             : 'opacity-100 scale-100 pointer-events-auto'
-        } ${
-          isPointerAtTop
-            ? 'pt-16 sm:pt-18 translate-y-2'
-            : 'pt-4 sm:pt-6 translate-y-0'
-        } ${
-          isIdle ? 'py-2 sm:py-3' : 'pb-6 sm:pb-8'
         }`}
       >
-        {/* Phase Pill Selector (Subtle shift to stay comfortably visible below incoming top bar) */}
+        {/* Phase Pill Selector */}
         <div
           id="pomodoro-phase-pills"
-          className={`flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-inner transition-all duration-300 ease-out shrink-0 ${
-            isPointerAtTop ? 'mt-1' : 'mt-0'
-          } ${
-            isZenIdle && !isPointerAtTop
-              ? 'opacity-0 -translate-y-4 pointer-events-none max-h-0 mb-0 py-0 border-transparent overflow-hidden'
-              : 'opacity-100 translate-y-0 pointer-events-auto max-h-16 mb-4 sm:mb-6'
-          }`}
+          className="flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-inner transition-opacity duration-700 ease-out shrink-0 max-h-16 mb-4 sm:mb-6"
           style={{
             backgroundColor: resolvedTheme.cardBg,
             borderColor: resolvedTheme.isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)',
@@ -970,7 +1040,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
               maxWidth: 'min(94vw, calc(100vh - 140px))',
               maxHeight: 'min(94vw, calc(100vh - 140px))',
               aspectRatio: '1 / 1',
-              transform: timerLeftShift > 0 && !isZenIdle ? `translateX(-${timerLeftShift}px)` : undefined,
+              transform: timerLeftShift > 0 ? `translateX(-${timerLeftShift}px)` : undefined,
             }}
           >
             <svg
@@ -1030,17 +1100,34 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                     className="flex flex-col items-center justify-center text-center max-w-[76%] max-h-[76%] px-2 overflow-hidden pointer-events-auto"
                     style={{ gap: `${taskTypography.gap}px` }}
                   >
-                    <span
-                      className="uppercase tracking-widest font-mono font-bold px-2.5 py-0.5 rounded-full border shrink-0 transition-all truncate max-w-full"
-                      style={{
-                        fontSize: `${taskTypography.badgeSize}px`,
-                        backgroundColor: `${currentTheme.accent}20`,
-                        borderColor: `${currentTheme.accent}50`,
-                        color: currentTheme.accent,
-                      }}
-                    >
-                      Task #{tasks.findIndex((t) => t.id === displayTask.id) + 1}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-center shrink-0">
+                      <span
+                        className="uppercase tracking-widest font-mono font-bold px-2.5 py-0.5 rounded-full border shrink-0 transition-all truncate max-w-full"
+                        style={{
+                          fontSize: `${taskTypography.badgeSize}px`,
+                          backgroundColor: `${currentTheme.accent}20`,
+                          borderColor: `${currentTheme.accent}50`,
+                          color: currentTheme.accent,
+                        }}
+                      >
+                        Task #{tasks.findIndex((t) => t.id === displayTask.id) + 1}
+                      </span>
+                      {displayTask.difficulty && (
+                        <span
+                          className={`uppercase tracking-widest font-mono font-bold px-2 py-0.5 rounded-full border shrink-0 transition-all truncate text-[10px] ${
+                            displayTask.difficulty === 'easy'
+                              ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-400'
+                              : displayTask.difficulty === 'hard'
+                              ? 'border-rose-500/40 bg-rose-500/15 text-rose-400'
+                              : displayTask.difficulty === 'expert'
+                              ? 'border-purple-500/40 bg-purple-500/15 text-purple-400'
+                              : 'border-amber-500/40 bg-amber-500/15 text-amber-400'
+                          }`}
+                        >
+                          {displayTask.difficulty === 'easy' ? '● Easy' : displayTask.difficulty === 'hard' ? '▲ Hard' : displayTask.difficulty === 'expert' ? '★ Expert' : '■ Medium'}
+                        </span>
+                      )}
+                    </div>
                     <h4
                       className="font-bold tracking-tight text-center leading-tight line-clamp-3 break-words max-w-full"
                       style={{
@@ -1119,9 +1206,9 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           {/* 2. Side Section: Controls and Tasks Columns Side-by-Side (Smooth Gradual Transition) */}
           <div
             id="pomo-side-section"
-            className={`flex flex-row items-stretch gap-4 sm:gap-5 transition-all duration-700 ease-in-out ${
+            className={`flex flex-row items-stretch gap-4 sm:gap-5 transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
               isZenIdle
-                ? 'opacity-0 scale-90 translate-x-6 pointer-events-none select-none'
+                ? 'opacity-0 scale-95 translate-x-4 pointer-events-none select-none'
                 : 'opacity-100 scale-100 translate-x-0 pointer-events-auto'
             }`}
           >
@@ -1319,7 +1406,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                         <button
                           id={`task-num-btn-${idx + 1}`}
                           onClick={() => handleToggleTaskCompleted(task.id)}
-                          className={`apple-hover w-9 h-9 sm:w-10 sm:h-10 rounded-xl border flex items-center justify-center font-mono font-bold text-sm cursor-pointer select-none ${
+                          className={`apple-hover relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl border flex items-center justify-center font-mono font-bold text-sm cursor-pointer select-none ${
                             isDone ? 'line-through' : ''
                           }`}
                           style={
@@ -1347,8 +1434,23 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                                   color: resolvedTheme.textColor,
                                 }
                           }
-                          title={`Task ${idx + 1}: ${task.title}. Click to toggle completed.`}
+                          title={`Task ${idx + 1}: ${task.title}${task.difficulty ? ` (${task.difficulty})` : ''}. Click to toggle completed.`}
                         >
+                          {task.difficulty && (
+                            <span
+                              className="absolute top-1 left-1 w-1.5 h-1.5 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  task.difficulty === 'easy'
+                                    ? '#10b981'
+                                    : task.difficulty === 'hard'
+                                    ? '#ef4444'
+                                    : task.difficulty === 'expert'
+                                    ? '#a855f7'
+                                    : '#f59e0b',
+                              }}
+                            />
+                          )}
                           {isDone ? (
                             <Check className="w-4 h-4 stroke-[3]" />
                           ) : (
@@ -1452,6 +1554,39 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                       resolvedTheme.isDark ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-neutral-50 border-neutral-300 text-neutral-900'
                     }`}
                   />
+                </div>
+
+                {/* 3. Task Difficulty */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider block">
+                    3. Task Difficulty
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { id: 'easy', label: 'Easy', color: '#10b981', border: 'border-emerald-500/50', bg: 'bg-emerald-500/15', text: 'text-emerald-400' },
+                      { id: 'medium', label: 'Medium', color: '#f59e0b', border: 'border-amber-500/50', bg: 'bg-amber-500/15', text: 'text-amber-400' },
+                      { id: 'hard', label: 'Hard', color: '#ef4444', border: 'border-rose-500/50', bg: 'bg-rose-500/15', text: 'text-rose-400' },
+                      { id: 'expert', label: 'Expert', color: '#a855f7', border: 'border-purple-500/50', bg: 'bg-purple-500/15', text: 'text-purple-400' },
+                    ].map((diff) => {
+                      const isSelected = newTaskDifficulty === diff.id;
+                      return (
+                        <button
+                          key={diff.id}
+                          type="button"
+                          id={`task-diff-btn-${diff.id}`}
+                          onClick={() => setNewTaskDifficulty(diff.id as TaskDifficulty)}
+                          className={`py-2 px-1 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                            isSelected
+                              ? `${diff.border} ${diff.bg} ${diff.text} ring-2 shadow-sm`
+                              : 'border-neutral-800 bg-neutral-900/50 text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: diff.color }} />
+                          <span>{diff.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-end gap-2.5 pt-2">
