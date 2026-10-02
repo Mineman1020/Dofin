@@ -329,6 +329,23 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     };
   }, [isRunning, isZenEnabled, isTaskModalOpen, deviceMode, isZenIdle]);
 
+  // When the idle clock is on in the pomodoro, strictly disable scrolling across body and html
+  useEffect(() => {
+    if (isZenIdle) {
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      const prevTouchAction = document.body.style.touchAction;
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+        document.body.style.touchAction = prevTouchAction;
+      };
+    }
+  }, [isZenIdle]);
+
   // Idle timer: hide non-essential elements when user is inactive, keep clock, counter, controls & tasks visible
   useEffect(() => {
     if (isTaskModalOpen) {
@@ -915,6 +932,26 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
             }}
           />
         </svg>
+
+        {/* Full-screen touch shield in mobile idle mode to prevent ANY accidental touch from waking the screen */}
+        {deviceMode === 'mobile' && isZenIdle && (
+          <div
+            id="mobile-zen-touch-shield"
+            className="fixed inset-0 z-35 pointer-events-auto touch-none select-none bg-transparent"
+            onTouchStart={(e) => {
+              e.stopPropagation();
+            }}
+            onTouchMove={(e) => {
+              e.stopPropagation();
+            }}
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          />
+        )}
 
         {/* Center of Screen: ONLY the timer digits (no badges, no task info, no buttons) */}
         <div

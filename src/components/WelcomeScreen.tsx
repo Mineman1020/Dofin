@@ -20,8 +20,10 @@ import {
   Keyboard,
   Sparkles,
   Cloud,
+  Laptop,
+  Smartphone,
 } from 'lucide-react';
-import { ClockSettings, PomodoroSettings, ViewMode, UserAccount } from '../types';
+import { ClockSettings, PomodoroSettings, ViewMode, UserAccount, DeviceType } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS, FONT_OPTICAL_SCALES } from '../utils/constants';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
 import { useFullscreen } from '../utils/useFullscreen';
@@ -40,6 +42,8 @@ interface WelcomeScreenProps {
   pomodoroTimer?: PomodoroTimerController;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  deviceMode?: DeviceType;
+  onToggleDeviceMode?: (mode: DeviceType) => void;
 }
 
 interface InteractiveModeCardProps {
@@ -170,6 +174,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   pomodoroTimer,
   isDarkMode,
   onToggleDarkMode,
+  deviceMode = 'pc',
+  onToggleDeviceMode,
 }) => {
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
@@ -246,7 +252,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   // Fullscreen state with multi-source detection
   const { isFullscreen } = useFullscreen();
 
-  const canScroll = !isFullscreen && clockSettings.enableScrolling !== false;
+  // For mobile user only, allow scrolling even in full screen!
+  const canScroll =
+    deviceMode === 'mobile' || (!isFullscreen && clockSettings.enableScrolling !== false);
 
   return (
     <div

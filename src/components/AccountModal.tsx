@@ -81,7 +81,16 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const formattedPreview = formatUsername(username);
 
   const handleUsernameChange = (val: string) => {
-    setUsername(val);
+    // If the user pastes an email like "user@gmail.com", extract the username
+    let clean = val;
+    if (clean.includes('@') && !clean.toLowerCase().endsWith('@dek')) {
+      clean = clean.split('@')[0];
+    }
+    // If user types @dek manually, strip it from raw input so the fixed badge represents it
+    if (clean.toLowerCase().endsWith('@dek')) {
+      clean = clean.slice(0, -4);
+    }
+    setUsername(clean);
     if (error) setError(null);
   };
 
@@ -355,22 +364,23 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-3.5">
           {mode !== 'guest' && (
             <>
-              {/* Username Field */}
+              {/* Username Field with Built-in Automatic @dek Suffix */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label
                     htmlFor="account-username-input"
                     className="block text-xs font-semibold text-neutral-300 uppercase tracking-wider"
                   >
-                    Username (Ends with @dek)
+                    Account Username
                   </label>
                   {formattedPreview && (
-                    <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                      Will be: {formattedPreview}
+                    <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>{formattedPreview}</span>
                     </span>
                   )}
                 </div>
-                <div className="relative">
+                <div className="relative flex items-center">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-500">
                     <User className="w-4 h-4" />
                   </div>
@@ -381,26 +391,25 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                     autoComplete="username"
                     value={username}
                     onChange={(e) => handleUsernameChange(e.target.value)}
-                    placeholder="e.g. yourname or yourname@dek"
+                    placeholder="e.g. alex or johndoe"
                     autoFocus
                     required
                     maxLength={50}
-                    className="w-full pl-10 pr-20 py-2.5 bg-neutral-950 border border-neutral-700/80 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-sm font-mono transition-all"
+                    className="w-full pl-10 pr-24 py-2.5 bg-neutral-950 border border-neutral-700/80 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-sm font-mono transition-all"
                   />
-                  {!username.toLowerCase().endsWith('@dek') && username.trim().length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setUsername(formatUsername(username))}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-mono border border-amber-500/30 cursor-pointer transition-all"
-                      title="Append @dek"
-                    >
-                      +@dek
-                    </button>
-                  )}
+                  {/* Fixed @dek Badge permanently affixed to input */}
+                  <div
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 text-xs font-mono font-bold border border-amber-500/35 select-none"
+                    title="@dek is automatically appended"
+                  >
+                    <span>@dek</span>
+                  </div>
                 </div>
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  Type your preferred username (e.g. <span className="font-mono text-neutral-400">alex</span> or <span className="font-mono text-neutral-400">alex@dek</span>).
-                </p>
+                <div className="flex items-center justify-between text-[11px] text-neutral-400 mt-1">
+                  <span>
+                    @dek is added automatically. You do not need to type @dek.
+                  </span>
+                </div>
               </div>
 
               {/* Password Field */}
@@ -505,54 +514,71 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           )}
 
           {/* DEVICE SELECTION & UI OPTIMIZATION (Every user chooses Mobile or PC) */}
-          <div className="pt-2 border-t border-neutral-800/80 space-y-2">
+          <div className="pt-2 border-t border-neutral-800/80 space-y-2.5">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-semibold text-neutral-300 uppercase tracking-wider">
+              <label className="block text-xs font-semibold text-neutral-200 uppercase tracking-wider">
                 {mode === 'login'
-                  ? 'Which device are you logging in from?'
+                  ? 'Which device are you logging in from right now?'
                   : 'Select Current Device Optimization'}
               </label>
-              <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+              <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 {selectedDevice === 'mobile' ? 'Mobile Mode' : 'PC Desktop Mode'}
               </span>
             </div>
+
+            {mode === 'login' && (
+              <p className="text-[11px] text-neutral-400 leading-relaxed bg-neutral-950/70 p-2.5 rounded-xl border border-neutral-800/80">
+                💡 <strong>Cross-device note:</strong> If you created your account on PC and are now logging in on Mobile (or vice-versa), choose your current device below. We will immediately optimize and resize the layout for this screen.
+              </p>
+            )}
+
             <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
                 id="device-opt-mobile-btn"
                 onClick={() => setSelectedDevice('mobile')}
-                className={`p-3 rounded-xl border flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer ${
+                className={`p-3 rounded-2xl border flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer ${
                   selectedDevice === 'mobile'
-                    ? 'border-amber-400 bg-amber-500/15 text-white ring-2 ring-amber-400/40 shadow-sm'
-                    : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-900 text-neutral-400'
+                    ? 'border-amber-400 bg-amber-500/20 text-white ring-2 ring-amber-400/50 shadow-md'
+                    : 'border-neutral-800 bg-neutral-950/60 hover:bg-neutral-900 text-neutral-400'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-bold text-xs">
-                  <Smartphone className="w-4 h-4 text-amber-400" />
+                <div className="flex items-center gap-1.5 font-bold text-xs text-white">
+                  <Smartphone className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>Mobile Phone</span>
                 </div>
                 <span className="text-[10px] text-neutral-400 leading-tight">
-                  Touch-first, full-screen scroll & tap circle to wake
+                  Touch-first, full-screen scroll & tap-circle to wake idle screen
                 </span>
+                {selectedDevice === 'mobile' && (
+                  <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                    Selected
+                  </span>
+                )}
               </button>
 
               <button
                 type="button"
                 id="device-opt-pc-btn"
                 onClick={() => setSelectedDevice('pc')}
-                className={`p-3 rounded-xl border flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer ${
+                className={`p-3 rounded-2xl border flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer ${
                   selectedDevice === 'pc'
-                    ? 'border-amber-400 bg-amber-500/15 text-white ring-2 ring-amber-400/40 shadow-sm'
-                    : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-900 text-neutral-400'
+                    ? 'border-amber-400 bg-amber-500/20 text-white ring-2 ring-amber-400/50 shadow-md'
+                    : 'border-neutral-800 bg-neutral-950/60 hover:bg-neutral-900 text-neutral-400'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-bold text-xs">
-                  <Laptop className="w-4 h-4 text-amber-400" />
+                <div className="flex items-center gap-1.5 font-bold text-xs text-white">
+                  <Laptop className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>PC / Laptop</span>
                 </div>
                 <span className="text-[10px] text-neutral-400 leading-tight">
-                  Spacious widescreen & hover access bar
+                  Widescreen layout, hover access bar & mouse pointer wake
                 </span>
+                {selectedDevice === 'pc' && (
+                  <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                    Selected
+                  </span>
+                )}
               </button>
             </div>
           </div>

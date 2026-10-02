@@ -95,12 +95,24 @@ export async function hashPassword(password: string): Promise<string> {
 export function formatUsername(input: string): string {
   const trimmed = input.trim().toLowerCase();
   if (!trimmed) return '';
-  if (trimmed.endsWith('@dek')) {
-    return trimmed;
+
+  let handle = trimmed;
+
+  // If user entered an email address (e.g. name@gmail.com), extract their handle
+  if (handle.includes('@') && !handle.endsWith('@dek')) {
+    handle = handle.split('@')[0].trim();
   }
-  // Strip any trailing @ symbol before appending
-  const clean = trimmed.replace(/@+$/, '');
-  return `${clean}@dek`;
+
+  // Strip duplicate or existing @dek suffixes
+  while (handle.endsWith('@dek')) {
+    handle = handle.slice(0, -4).trim();
+  }
+
+  // Strip any trailing @ symbol
+  handle = handle.replace(/@+$/, '').trim();
+  if (!handle) return '';
+
+  return `${handle}@dek`;
 }
 
 /**
@@ -147,7 +159,8 @@ export function validatePassword(password: string): { isValid: boolean; error?: 
  * Safe document ID generator from username
  */
 export function getAccountDocId(normalizedUsername: string): string {
-  return normalizedUsername.toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+  const formatted = formatUsername(normalizedUsername);
+  return formatted.toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
 }
 
 /**

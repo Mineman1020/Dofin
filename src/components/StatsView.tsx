@@ -36,7 +36,7 @@ import {
   Users,
   Keyboard,
 } from 'lucide-react';
-import { ClockSettings, PomodoroSettings } from '../types';
+import { ClockSettings, PomodoroSettings, DeviceType } from '../types';
 import {
   getWeeklyStats,
   formatMinutesHuman,
@@ -60,6 +60,8 @@ interface StatsViewProps {
   userName: string;
   isDarkMode: boolean;
   onToggleDarkMode?: () => void;
+  deviceMode?: DeviceType;
+  onToggleDeviceMode?: (mode: DeviceType) => void;
 }
 
 export const StatsView: React.FC<StatsViewProps> = ({
@@ -74,6 +76,8 @@ export const StatsView: React.FC<StatsViewProps> = ({
   userName,
   isDarkMode,
   onToggleDarkMode,
+  deviceMode = 'pc',
+  onToggleDeviceMode,
 }) => {
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [chartViewMode, setChartViewMode] = useState<'combined' | 'focus' | 'tasks' | 'cumulative'>('combined');
@@ -191,7 +195,9 @@ export const StatsView: React.FC<StatsViewProps> = ({
     return null;
   };
 
-  const canScroll = !isFullscreen && clockSettings?.enableScrolling !== false;
+  // For mobile user only, allow scrolling even in full screen!
+  const canScroll =
+    deviceMode === 'mobile' || (!isFullscreen && clockSettings?.enableScrolling !== false);
 
   return (
     <div

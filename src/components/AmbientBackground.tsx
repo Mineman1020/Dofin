@@ -777,13 +777,162 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
           <div
             className="absolute bottom-0 left-0 right-0 h-44 pointer-events-none"
             style={{
-              background:
-                'polygon(0% 100%, 0% 65%, 15% 45%, 30% 60%, 48% 30%, 65% 55%, 82% 35%, 100% 50%, 100% 100%)',
               clipPath:
                 'polygon(0% 100%, 0% 70%, 14% 50%, 28% 65%, 45% 35%, 62% 60%, 78% 38%, 90% 52%, 100% 45%, 100% 100%)',
               backgroundColor: '#0c0514',
             }}
           />
+        </div>
+      )}
+
+      {/* 16. PINE MIST RAINFALL */}
+      {ambientTheme === 'pine-rain' && (
+        <div className="absolute inset-0 w-full h-full bg-[#081513] overflow-hidden">
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'linear-gradient(180deg, #06110f 0%, #0d221c 40%, #16362d 70%, #071310 100%)',
+            }}
+          />
+          {/* Misty evergreen tree silhouettes */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-48 pointer-events-none opacity-80"
+            style={{
+              clipPath:
+                'polygon(0% 100%, 0% 60%, 8% 35%, 12% 50%, 20% 25%, 26% 45%, 35% 20%, 42% 48%, 52% 22%, 60% 45%, 70% 18%, 78% 42%, 88% 28%, 95% 50%, 100% 30%, 100% 100%)',
+              backgroundColor: '#040b09',
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-20 blur-2xl pointer-events-none"
+            style={{
+              background: 'radial-gradient(ellipse at 50% 20%, #10b981 0%, transparent 60%)',
+            }}
+          />
+        </div>
+      )}
+
+      {/* 17. MIDNIGHT JAZZ CAFE */}
+      {ambientTheme === 'jazz-cafe' && (
+        <div className="absolute inset-0 w-full h-full bg-[#120804] overflow-hidden">
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'radial-gradient(ellipse at 50% 20%, #2c150b 0%, #170a05 50%, #070302 100%)',
+            }}
+          />
+          {/* Warm Amber Bokeh Lights */}
+          <div
+            className="absolute top-12 left-1/4 w-40 h-40 rounded-full bg-amber-500/15 blur-2xl pointer-events-none animate-pulse"
+            style={{ animationDuration: '6s' }}
+          />
+          <div
+            className="absolute top-20 right-1/4 w-48 h-48 rounded-full bg-orange-500/15 blur-3xl pointer-events-none animate-pulse"
+            style={{ animationDuration: '8s' }}
+          />
+          {/* Window Sill Vignette */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/40 pointer-events-none" />
+        </div>
+      )}
+
+      {/* 18. VOLCANIC MAGMA HEARTH */}
+      {ambientTheme === 'volcano-ember' && (
+        <div className="absolute inset-0 w-full h-full bg-[#0a0201] overflow-hidden">
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'radial-gradient(ellipse at 50% 100%, #3e0c03 0%, #1f0502 50%, #070101 100%)',
+            }}
+          />
+          {/* Magma Fissure Horizon */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none opacity-40 blur-xl"
+            style={{
+              background:
+                'linear-gradient(90deg, #ef4444 0%, #f97316 25%, #eab308 50%, #f97316 75%, #ef4444 100%)',
+            }}
+          />
+          {/* Rising Ember Glow */}
+          <div
+            className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-96 h-56 rounded-full bg-red-600/20 blur-3xl pointer-events-none animate-pulse"
+            style={{ animationDuration: '4s' }}
+          />
+        </div>
+      )}
+
+      {/* 19. CELESTIAL SINGULARITY */}
+      {ambientTheme === 'celestial-void' && (
+        <div className="absolute inset-0 w-full h-full bg-[#030108] overflow-hidden">
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'radial-gradient(circle at 50% 50%, #15062e 0%, #090216 45%, #020005 100%)',
+            }}
+          />
+          {/* Gravitational Accretion Disc Halo */}
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[420px] rounded-full border border-purple-500/20 pointer-events-none animate-spin"
+            style={{ animationDuration: '45s' }}
+          />
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] h-[340px] rounded-full border border-cyan-400/25 blur-[1px] pointer-events-none animate-spin"
+            style={{ animationDuration: '30s', animationDirection: 'reverse' }}
+          />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full bg-purple-600/15 blur-2xl pointer-events-none" />
+        </div>
+      )}
+
+      {/* 20. KYOTO MOSS WATERFALL */}
+      {ambientTheme === 'zen-waterfall' && (
+        <div className="absolute inset-0 w-full h-full bg-[#030f0a] overflow-hidden">
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'radial-gradient(ellipse at 50% 25%, #0e2b20 0%, #061811 50%, #010805 100%)',
+            }}
+          />
+          {/* Gentle Waterfall Mist Glow */}
+          <div
+            className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-full bg-gradient-to-b from-emerald-400/10 via-teal-400/15 to-transparent blur-2xl pointer-events-none"
+          />
+          {/* Mountain Silhouettes */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none"
+            style={{
+              clipPath:
+                'polygon(0% 100%, 0% 55%, 22% 35%, 45% 60%, 65% 30%, 85% 50%, 100% 40%, 100% 100%)',
+              backgroundColor: '#020c08',
+            }}
+          />
+        </div>
+      )}
+
+      {/* 21. ALPINE BLIZZARD SNOWFALL */}
+      {ambientTheme === 'blizzard' && (
+        <div className="absolute inset-0 w-full h-full bg-[#07131d] overflow-hidden">
+          <div
+            className="absolute inset-0 w-full h-full"
+            style={{
+              background:
+                'linear-gradient(180deg, #050d15 0%, #0c1c2a 45%, #14293c 70%, #08131e 100%)',
+            }}
+          />
+          {/* Alpine Mountain Ridges */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-44 pointer-events-none opacity-85"
+            style={{
+              clipPath:
+                'polygon(0% 100%, 0% 50%, 18% 25%, 35% 45%, 55% 15%, 72% 38%, 88% 22%, 100% 45%, 100% 100%)',
+              backgroundColor: '#040b12',
+            }}
+          />
+          {/* Cold Arctic Atmosphere Glow */}
+          <div className="absolute inset-0 bg-cyan-400/5 blur-3xl pointer-events-none" />
         </div>
       )}
     </div>

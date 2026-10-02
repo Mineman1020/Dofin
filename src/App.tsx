@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Maximize2, Minimize2, Sparkles } from 'lucide-react';
-import { ViewMode, ClockSettings, PomodoroSettings, UserAccount, UserCloudSyncData } from './types';
+import { Maximize2, Minimize2, Sparkles, Smartphone, Laptop } from 'lucide-react';
+import { ViewMode, ClockSettings, PomodoroSettings, UserAccount, UserCloudSyncData, DeviceType } from './types';
 import {
   DEFAULT_CLOCK_SETTINGS,
   DEFAULT_POMODORO_SETTINGS,
@@ -49,6 +49,31 @@ export default function App() {
       return '';
     }
   });
+
+  // Current Device Optimization State: 'mobile' | 'pc'
+  // Persisted in localStorage and chosen on onboarding/sign-in
+  const [deviceMode, setDeviceMode] = useState<DeviceType>(() => {
+    try {
+      const saved = localStorage.getItem('desk_clock_device_mode');
+      if (saved === 'mobile' || saved === 'pc') return saved;
+    } catch {}
+    if (typeof window !== 'undefined') {
+      const isMobileScreen =
+        window.innerWidth < 768 ||
+        /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      return isMobileScreen ? 'mobile' : 'pc';
+    }
+    return 'pc';
+  });
+
+  const handleSelectDeviceMode = (mode: DeviceType) => {
+    setDeviceMode(mode);
+    try {
+      localStorage.setItem('desk_clock_device_mode', mode);
+    } catch (e) {
+      console.debug('Failed to save device mode:', e);
+    }
+  };
 
   // First-time Entry Account Modal: prompt user on first arrival to create account, sign in, or continue as guest
   const [showStartupReveal, setShowStartupReveal] = useState<boolean>(true);
@@ -217,8 +242,12 @@ export default function App() {
 
   const handleAccountSuccess = (
     account: UserAccount,
-    syncData?: UserCloudSyncData | null
+    syncData?: UserCloudSyncData | null,
+    deviceType?: DeviceType
   ) => {
+    if (deviceType) {
+      handleSelectDeviceMode(deviceType);
+    }
     setUserAccount(account);
     setUserName(account.displayName);
     try {
@@ -242,7 +271,10 @@ export default function App() {
     setIsAccountModalOpen(false);
   };
 
-  const handleContinueAsGuest = (guestName: string) => {
+  const handleContinueAsGuest = (guestName: string, deviceType?: DeviceType) => {
+    if (deviceType) {
+      handleSelectDeviceMode(deviceType);
+    }
     const finalName = guestName.trim() || 'Guest';
     setUserName(finalName);
     try {
@@ -430,7 +462,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isShortcutsOpen, isPartyModalOpen, isSettingsOpen, isNameModalOpen, userName, currentView]);
 
-  const canScroll = !isFullscreen && clockSettings.enableScrolling !== false;
+  // For mobile user only, allow scrolling even in full screen!
+  const canScroll =
+    deviceMode === 'mobile' || (!isFullscreen && clockSettings.enableScrolling !== false);
 
   return (
     <div
@@ -466,6 +500,8 @@ export default function App() {
               pomodoroTimer={pomodoroTimer}
               isDarkMode={isDarkMode}
               onToggleDarkMode={handleToggleDarkMode}
+              deviceMode={deviceMode}
+              onToggleDeviceMode={handleSelectDeviceMode}
             />
           )}
 
@@ -485,6 +521,8 @@ export default function App() {
               pomodoroTimer={pomodoroTimer}
               isDarkMode={isDarkMode}
               onToggleDarkMode={handleToggleDarkMode}
+              deviceMode={deviceMode}
+              onToggleDeviceMode={handleSelectDeviceMode}
             />
           )}
 
@@ -507,6 +545,8 @@ export default function App() {
               onToggleDarkMode={handleToggleDarkMode}
               isFullscreen={isFullscreen}
               onToggleFullscreen={handleToggleFullscreen}
+              deviceMode={deviceMode}
+              onToggleDeviceMode={handleSelectDeviceMode}
             />
           )}
 
@@ -525,6 +565,8 @@ export default function App() {
               userName={userName || 'Friend'}
               isDarkMode={isDarkMode}
               onToggleDarkMode={handleToggleDarkMode}
+              deviceMode={deviceMode}
+              onToggleDeviceMode={handleSelectDeviceMode}
             />
           )}
 
@@ -543,6 +585,8 @@ export default function App() {
               userName={userName || 'Friend'}
               isDarkMode={isDarkMode}
               onToggleDarkMode={handleToggleDarkMode}
+              deviceMode={deviceMode}
+              onToggleDeviceMode={handleSelectDeviceMode}
             />
           )}
         </motion.div>
@@ -571,6 +615,8 @@ export default function App() {
         }}
         isDarkMode={isDarkMode}
         onToggleDarkMode={handleToggleDarkMode}
+        deviceMode={deviceMode}
+        onToggleDeviceMode={handleSelectDeviceMode}
       />
 
       {/* Account Modal for First-Time Entry, Settings Flow, and Cloud Sync */}
@@ -581,6 +627,8 @@ export default function App() {
         initialMode={accountModalMode}
         currentGuestName={userName}
         isSettingsFlow={isAccountModalSettingsFlow}
+        currentDeviceMode={deviceMode}
+        onSelectDeviceMode={handleSelectDeviceMode}
         onAccountSuccess={handleAccountSuccess}
         onContinueAsGuest={handleContinueAsGuest}
       />
@@ -654,8 +702,26 @@ export default function App() {
         >
           <span className="flex items-center gap-1.5 truncate">
             <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-            <span className="truncate">Tip: Use the app in full screen for the best experience</span>
+            <span className="truncate hidden sm:inline">Tip: Use the app in full screen for best experience</span>
+            <span className="truncate sm:hidden">Full screen mode</span>
           </span>
+
+          {/* Quick Device Mode Indicator & Switcher */}
+          <button
+            type="button"
+            id="global-device-mode-switch-btn"
+            onClick={() => handleSelectDeviceMode(deviceMode === 'mobile' ? 'pc' : 'mobile')}
+            className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-mono font-medium border cursor-pointer transition-all ${
+              deviceMode === 'mobile'
+                ? 'border-sky-500/40 bg-sky-500/15 text-sky-300'
+                : 'border-neutral-700 bg-neutral-800/80 text-neutral-300 hover:text-white'
+            }`}
+            title={`Optimized for ${deviceMode === 'mobile' ? 'Mobile' : 'PC'}. Click to switch.`}
+          >
+            {deviceMode === 'mobile' ? <Smartphone className="w-3 h-3 text-sky-400" /> : <Laptop className="w-3 h-3 text-amber-400" />}
+            <span className="capitalize">{deviceMode}</span>
+          </button>
+
           <button
             id="global-fullscreen-tip-btn"
             onClick={handleToggleFullscreen}

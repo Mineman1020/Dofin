@@ -20,6 +20,8 @@ import {
   MemberStatus,
   PartyMessage,
   MemberStatsSnapshot,
+  PartyPoll,
+  PartyPollOption,
 } from '../types';
 import {
   formatDateKey,
@@ -518,6 +520,147 @@ export function subscribeToPartyMessages(
           return aTime - bTime;
         });
         decryptAndNotify(sortedDocs);
+      });
+    }
+  );
+}
+
+// Create a new group decision poll in a party
+export async function createPartyPoll(
+  partyId: string,
+  partyCode: string,
+  question: string,
+  optionTexts: string[],
+  userName: string,
+  description?: string
+): Promise<PartyPoll> {
+  const cleanQ = question.trim();
+  if (!cleanQ) {
+    throw new Error('Poll question cannot be empty');
+  }
+  const cleanOptions = optionTexts.map((t) => t.trim()).filter(Boolean);
+  if (cleanOptions.length < 2) {
+    throw new Error('A poll requires at least 2 options');
+  }
+
+  const userId = getOrCreateUserId();
+  const pollsRef = collection(db, 'parties', partyId, 'polls');
+  const pollDoc = doc(pollsRef);
+
+  const options: PartyPollOption[] = cleanOptions.slice(0, 6).map((optText, index) => ({
+    id: `opt_${index + 1}_${Math.random().toString(36).slice(2, 7)}`,
+    text: optText,
+    voterIds: [],
+  }));
+
+  const pollData: PartyPoll = {
+    id: pollDoc.id,
+    partyId,
+    question: cleanQ,
+    ...(description?.trim() ? { description: description.trim() } : {}),
+    options,
+    createdBy: userId,
+    createdByName: userName.trim() || 'Focus Friend',
+    createdAt: new Date().toISOString(),
+    status: 'active',
+    totalVotes: 0,
+  };
+
+  await setDoc(pollDoc, pollData);
+
+  // Send an automated announcement in chat so everyone sees the decision poll
+  try {
+    await sendPartyMessage(
+      partyId,
+      partyCode,
+      `📊 Poll Created: "${cleanQ}" — cast your vote in chat!`,
+      userName
+    );
+  } catch (err) {
+    console.debug('Failed to post poll announcement to chat:', err);
+  }
+
+  return pollData;
+}
+
+// Cast or toggle a vote on a poll option
+export async function votePartyPoll(
+  partyId: string,
+  pollId: string,
+  optionId: string
+): Promise<void> {
+  const userId = getOrCreateUserId();
+  const pollRef = doc(db, 'parties', partyId, 'polls', pollId);
+  const snap = await getDoc(pollRef);
+  if (!snap.exists()) {
+    throw new Error('Poll not found');
+  }
+  const poll = snap.data() as PartyPoll;
+  if (poll.status === 'closed') {
+    throw new Error('This poll is closed');
+  }
+
+  // Update options: remove user's vote from all other options, toggle or add to selected option
+  let totalVotes = 0;
+  const updatedOptions = poll.options.map((opt) => {
+    const hasVotedThis = opt.voterIds.includes(userId);
+    let newVoters = opt.voterIds.filter((id) => id !== userId);
+    if (opt.id === optionId) {
+      if (!hasVotedThis) {
+        newVoters.push(userId);
+      }
+    }
+    totalVotes += newVoters.length;
+    return {
+      ...opt,
+      voterIds: newVoters,
+    };
+  });
+
+  await updateDoc(pollRef, {
+    options: updatedOptions,
+    totalVotes,
+  });
+}
+
+// Close a poll once a decision has been reached
+export async function closePartyPoll(partyId: string, pollId: string): Promise<void> {
+  const pollRef = doc(db, 'parties', partyId, 'polls', pollId);
+  await updateDoc(pollRef, {
+    status: 'closed',
+  });
+}
+
+// Subscribe to real-time polls for a party
+export function subscribeToPartyPolls(
+  partyId: string,
+  onUpdate: (polls: PartyPoll[]) => void
+): () => void {
+  const pollsRef = collection(db, 'parties', partyId, 'polls');
+  const q = query(pollsRef, orderBy('createdAt', 'desc'));
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list: PartyPoll[] = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<PartyPoll, 'id'>),
+      }));
+      onUpdate(list);
+    },
+    (err) => {
+      console.warn('Error subscribing to party polls with query, falling back:', err);
+      return onSnapshot(pollsRef, (fSnap) => {
+        const sortedDocs = [...fSnap.docs].sort((a, b) => {
+          const aTime = new Date(a.data().createdAt).getTime();
+          const bTime = new Date(b.data().createdAt).getTime();
+          return bTime - aTime;
+        });
+        const list: PartyPoll[] = sortedDocs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<PartyPoll, 'id'>),
+        }));
+        onUpdate(list);
       });
     }
   );

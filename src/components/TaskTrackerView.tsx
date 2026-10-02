@@ -21,7 +21,7 @@ import {
   BarChart3,
   Keyboard,
 } from 'lucide-react';
-import { ClockSettings, PomodoroSettings, PomodoroTask } from '../types';
+import { ClockSettings, PomodoroSettings, PomodoroTask, TaskDifficulty, DeviceType } from '../types';
 import { recordTaskCompletion } from '../utils/statsStorage';
 import { useFullscreen } from '../utils/useFullscreen';
 
@@ -38,6 +38,8 @@ interface TaskTrackerViewProps {
   userName: string;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  deviceMode?: DeviceType;
+  onToggleDeviceMode?: (mode: DeviceType) => void;
 }
 
 const TASKS_STORAGE_KEY = 'desk_clock_pomodoro_tasks_v1';
@@ -55,6 +57,8 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
   userName,
   isDarkMode,
   onToggleDarkMode,
+  deviceMode = 'pc',
+  onToggleDeviceMode,
 }) => {
   // Shared task store across app
   const [tasks, setTasks] = useState<PomodoroTask[]>(() => {
@@ -97,11 +101,13 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
 
   // Filter state: 'all' | 'pending' | 'completed'
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [difficultyFilter, setDifficultyFilter] = useState<'all' | TaskDifficulty>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Task creation inputs
+  // Task creation inputs (Title, Description, Difficulty, Estimated Pomodoros)
   const [newTitle, setNewTitle] = useState<string>('');
   const [newDescription, setNewDescription] = useState<string>('');
+  const [newTaskDifficulty, setNewTaskDifficulty] = useState<TaskDifficulty>('medium');
   const [newEst, setNewEst] = useState<number>(1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
 
@@ -116,6 +122,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
       id: Date.now().toString(),
       title: newTitle.trim(),
       description: newDescription.trim() || undefined,
+      difficulty: newTaskDifficulty,
       estimatedPomodoros: Number(newEst) || 1,
       completedPomodoros: 0,
       isCompleted: false,
@@ -125,6 +132,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
     setTasks((prev) => [task, ...prev]);
     setNewTitle('');
     setNewDescription('');
+    setNewTaskDifficulty('medium');
     setNewEst(1);
     setIsCreateModalOpen(false);
   };
@@ -171,7 +179,10 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
       (task.description &&
         task.description.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    return matchesFilter && matchesSearch;
+    const matchesDifficulty =
+      difficultyFilter === 'all' || task.difficulty === difficultyFilter;
+
+    return matchesFilter && matchesDifficulty && matchesSearch;
   });
 
   const totalTasks = tasks.length;
@@ -431,74 +442,111 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
         )}
 
         {/* Search, Filters, and Bulk Actions Toolbar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          {/* Left: Filter Buttons */}
-          <div
-            className={`inline-flex p-1 rounded-2xl border self-start ${
-              isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-neutral-100 border-neutral-200'
-            }`}
-          >
-            <button
-              onClick={() => setFilter('all')}
-              className={`apple-pill-hover px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
-                filter === 'all'
-                  ? isDarkMode
-                    ? 'bg-neutral-800 text-white shadow-sm'
-                    : 'bg-white text-neutral-900 shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200'
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            {/* Status Filter Buttons */}
+            <div
+              className={`inline-flex p-1 rounded-2xl border self-start ${
+                isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-neutral-100 border-neutral-200'
               }`}
             >
-              All ({totalTasks})
-            </button>
-            <button
-              onClick={() => setFilter('pending')}
-              className={`apple-pill-hover px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
-                filter === 'pending'
-                  ? isDarkMode
-                    ? 'bg-neutral-800 text-amber-400 shadow-sm'
-                    : 'bg-white text-amber-600 shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200'
-              }`}
-            >
-              Pending ({pendingTasks})
-            </button>
-            <button
-              onClick={() => setFilter('completed')}
-              className={`apple-pill-hover px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
-                filter === 'completed'
-                  ? isDarkMode
-                    ? 'bg-neutral-800 text-emerald-400 shadow-sm'
-                    : 'bg-white text-emerald-600 shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200'
-              }`}
-            >
-              Completed ({completedTasks})
-            </button>
+              <button
+                onClick={() => setFilter('all')}
+                className={`apple-pill-hover px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                  filter === 'all'
+                    ? isDarkMode
+                      ? 'bg-neutral-800 text-white shadow-sm'
+                      : 'bg-white text-neutral-900 shadow-sm'
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                All ({totalTasks})
+              </button>
+              <button
+                onClick={() => setFilter('pending')}
+                className={`apple-pill-hover px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                  filter === 'pending'
+                    ? isDarkMode
+                      ? 'bg-neutral-800 text-amber-400 shadow-sm'
+                      : 'bg-white text-amber-600 shadow-sm'
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                Pending ({pendingTasks})
+              </button>
+              <button
+                onClick={() => setFilter('completed')}
+                className={`apple-pill-hover px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                  filter === 'completed'
+                    ? isDarkMode
+                      ? 'bg-neutral-800 text-emerald-400 shadow-sm'
+                      : 'bg-white text-emerald-600 shadow-sm'
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                Completed ({completedTasks})
+              </button>
+            </div>
+
+            {/* Right: Search Input & Clear Completed */}
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={`px-3.5 py-2 rounded-xl text-xs border focus:outline-none transition-colors w-full sm:w-56 ${
+                  isDarkMode
+                    ? 'bg-neutral-900 border-neutral-800 text-white placeholder-neutral-500 focus:border-emerald-500/60'
+                    : 'bg-white border-neutral-200 text-neutral-900 placeholder-neutral-400 focus:border-emerald-500/60'
+                }`}
+              />
+
+              {completedTasks > 0 && (
+                <button
+                  onClick={handleClearCompleted}
+                  className="apple-hover text-xs text-rose-500 hover:text-rose-400 px-3 py-2 rounded-xl border border-rose-500/20 hover:border-rose-500/40 bg-rose-500/5 cursor-pointer whitespace-nowrap"
+                  title="Remove completed tasks"
+                >
+                  Clear Done
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Right: Search Input & Clear Completed */}
-          <div className="flex items-center gap-3">
-            <input
-              type="text"
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={`px-3.5 py-2 rounded-xl text-xs border focus:outline-none transition-colors w-full sm:w-56 ${
-                isDarkMode
-                  ? 'bg-neutral-900 border-neutral-800 text-white placeholder-neutral-500 focus:border-emerald-500/60'
-                  : 'bg-white border-neutral-200 text-neutral-900 placeholder-neutral-400 focus:border-emerald-500/60'
-              }`}
-            />
-
-            {completedTasks > 0 && (
-              <button
-                onClick={handleClearCompleted}
-                className="apple-hover text-xs text-rose-500 hover:text-rose-400 px-3 py-2 rounded-xl border border-rose-500/20 hover:border-rose-500/40 bg-rose-500/5 cursor-pointer whitespace-nowrap"
-                title="Remove completed tasks"
-              >
-                Clear Done
-              </button>
-            )}
+          {/* Difficulty Filter Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-400 pr-1 shrink-0">
+              Difficulty:
+            </span>
+            {[
+              { id: 'all', label: 'All', color: '#94a3b8' },
+              { id: 'easy', label: 'Easy', color: '#10b981' },
+              { id: 'medium', label: 'Medium', color: '#f59e0b' },
+              { id: 'hard', label: 'Hard', color: '#ef4444' },
+              { id: 'expert', label: 'Expert', color: '#a855f7' },
+            ].map((diff) => {
+              const isSelected = difficultyFilter === diff.id;
+              return (
+                <button
+                  key={diff.id}
+                  id={`tracker-filter-diff-${diff.id}`}
+                  onClick={() => setDifficultyFilter(diff.id as any)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-medium border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                    isSelected
+                      ? isDarkMode
+                        ? 'bg-neutral-800 border-neutral-600 text-white shadow-sm ring-1 ring-white/20'
+                        : 'bg-white border-neutral-400 text-neutral-900 shadow-sm ring-1 ring-neutral-400/40'
+                      : isDarkMode
+                      ? 'bg-neutral-900/60 border-neutral-800/80 text-neutral-400 hover:text-neutral-200'
+                      : 'bg-neutral-100/80 border-neutral-200/80 text-neutral-600 hover:text-neutral-900'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: diff.color }} />
+                  <span>{diff.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -585,6 +633,37 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
                         >
                           {task.title}
                         </h4>
+
+                        {/* Task Difficulty Badge */}
+                        {task.difficulty && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                              task.difficulty === 'easy'
+                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                                : task.difficulty === 'hard'
+                                ? 'bg-rose-500/15 border-rose-500/40 text-rose-400'
+                                : task.difficulty === 'expert'
+                                ? 'bg-purple-500/15 border-purple-500/40 text-purple-400'
+                                : 'bg-amber-500/15 border-amber-500/40 text-amber-400'
+                            }`}
+                            title={`Difficulty: ${task.difficulty}`}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{
+                                backgroundColor:
+                                  task.difficulty === 'easy'
+                                    ? '#10b981'
+                                    : task.difficulty === 'hard'
+                                    ? '#ef4444'
+                                    : task.difficulty === 'expert'
+                                    ? '#a855f7'
+                                    : '#f59e0b',
+                              }}
+                            />
+                            <span className="capitalize">{task.difficulty}</span>
+                          </span>
+                        )}
                       </div>
 
                       {task.description && (
@@ -732,7 +811,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
                 />
               </div>
 
-              {/* Estimated Pomodoro intervals (optional) */}
+              {/* 3. Estimated Focus Intervals (optional) */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="tracker-task-est-input"
@@ -757,6 +836,41 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
                   <span className="text-xs text-neutral-500">
                     sessions (~{(newEst * pomodoroSettings.workMinutes)} mins if timed)
                   </span>
+                </div>
+              </div>
+
+              {/* 4. Assign Task Difficulty */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider block">
+                  4. Task Difficulty
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { id: 'easy', label: 'Easy', color: '#10b981', border: 'border-emerald-500/50', bg: 'bg-emerald-500/15', text: 'text-emerald-400' },
+                    { id: 'medium', label: 'Medium', color: '#f59e0b', border: 'border-amber-500/50', bg: 'bg-amber-500/15', text: 'text-amber-400' },
+                    { id: 'hard', label: 'Hard', color: '#ef4444', border: 'border-rose-500/50', bg: 'bg-rose-500/15', text: 'text-rose-400' },
+                    { id: 'expert', label: 'Expert', color: '#a855f7', border: 'border-purple-500/50', bg: 'bg-purple-500/15', text: 'text-purple-400' },
+                  ].map((diff) => {
+                    const isSelected = newTaskDifficulty === diff.id;
+                    return (
+                      <button
+                        key={diff.id}
+                        type="button"
+                        id={`tracker-task-diff-btn-${diff.id}`}
+                        onClick={() => setNewTaskDifficulty(diff.id as TaskDifficulty)}
+                        className={`py-2 px-1 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                          isSelected
+                            ? `${diff.border} ${diff.bg} ${diff.text} ring-2 shadow-sm`
+                            : isDarkMode
+                            ? 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:text-white'
+                            : 'border-neutral-200 bg-neutral-100 text-neutral-600 hover:text-neutral-900'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: diff.color }} />
+                        <span>{diff.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

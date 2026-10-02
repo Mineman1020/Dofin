@@ -29,8 +29,11 @@ import {
   ShieldCheck,
   TrendingUp,
   CheckCircle2,
+  BarChart2,
+  Vote,
+  HelpCircle,
 } from 'lucide-react';
-import { Party, PartyMember, PartyPurpose, PartyMessage } from '../types';
+import { Party, PartyMember, PartyPurpose, PartyMessage, PartyPoll, PartyPollOption } from '../types';
 import {
   getSavedPartyIds,
   getActivePartyId,
@@ -43,6 +46,10 @@ import {
   fetchUserParties,
   sendPartyMessage,
   subscribeToPartyMessages,
+  createPartyPoll,
+  votePartyPoll,
+  closePartyPoll,
+  subscribeToPartyPolls,
 } from '../utils/partyService';
 import { getOrCreateUserId, getOrCreateAvatarColor } from '../utils/firebase';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
@@ -110,6 +117,92 @@ export const PartyModal: React.FC<PartyModalProps> = ({
 
   // E2E encryption notice banner (disappears after 2 or 3 chats or manual dismissal)
   const [e2eeBannerDismissed, setE2eeBannerDismissed] = useState<boolean>(false);
+
+  // Group Decision Polls state
+  const [polls, setPolls] = useState<PartyPoll[]>([]);
+  const [isCreatePollOpen, setIsCreatePollOpen] = useState<boolean>(false);
+  const [pollQuestion, setPollQuestion] = useState<string>('');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [pollDescription, setPollDescription] = useState<string>('');
+  const [isSubmittingPoll, setIsSubmittingPoll] = useState<boolean>(false);
+  const [showPollsTray, setShowPollsTray] = useState<boolean>(true);
+
+  // Subscribe to real-time party polls
+  useEffect(() => {
+    if (!activeParty?.id) {
+      setPolls([]);
+      return;
+    }
+    const unsub = subscribeToPartyPolls(activeParty.id, (list) => {
+      setPolls(list);
+    });
+    return () => unsub();
+  }, [activeParty?.id]);
+
+  const handleVotePoll = async (pollId: string, optionId: string) => {
+    if (!activeParty?.id) return;
+    try {
+      await votePartyPoll(activeParty.id, pollId, optionId);
+    } catch (err) {
+      console.warn('Failed to vote on poll:', err);
+    }
+  };
+
+  const handleClosePoll = async (pollId: string) => {
+    if (!activeParty?.id) return;
+    try {
+      await closePartyPoll(activeParty.id, pollId);
+    } catch (err) {
+      console.warn('Failed to close poll:', err);
+    }
+  };
+
+  const handleCreatePollSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!activeParty?.id || !pollQuestion.trim()) return;
+    const cleanOpts = pollOptions.map((o) => o.trim()).filter(Boolean);
+    if (cleanOpts.length < 2) return;
+
+    setIsSubmittingPoll(true);
+    try {
+      await createPartyPoll(
+        activeParty.id,
+        activeParty.code || '',
+        pollQuestion.trim(),
+        cleanOpts,
+        userName,
+        pollDescription.trim() || undefined
+      );
+      setPollQuestion('');
+      setPollOptions(['', '']);
+      setPollDescription('');
+      setIsCreatePollOpen(false);
+      setShowPollsTray(true);
+    } catch (err) {
+      console.error('Error creating poll:', err);
+    } finally {
+      setIsSubmittingPoll(false);
+    }
+  };
+
+  const QUICK_POLL_TEMPLATES = [
+    {
+      title: '☕ Take a break or keep pushing?',
+      options: ['☕ Take a 5-min break now', '🔥 Push 15 mins more', '⚡ Complete full session'],
+    },
+    {
+      title: '🎵 Next focus soundtrack to sync?',
+      options: ['🎧 Lofi Chill Beats', '🌧️ Heavy Rain & Thunder', '🌊 Deep Alpha Waves', '☕ Cozy Coffee Shop'],
+    },
+    {
+      title: '⏱️ Sprint duration for the next round?',
+      options: ['⏱️ 25 Minutes', '⏱️ 40 Minutes', '⏱️ 50 Minutes'],
+    },
+    {
+      title: '🎯 Goal check: Finished your target task?',
+      options: ['✅ Yes, crushed it! 🎉', '⏳ Almost there (5m left)', '🚀 Still working on it'],
+    },
+  ];
 
   // Subscribe to real-time party messages with E2EE decryption
   useEffect(() => {
@@ -948,6 +1041,187 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                         </div>
                       )}
 
+                      {/* GROUP DECISION POLLS SECTION */}
+                      <div className="rounded-2xl bg-neutral-900/70 border border-neutral-800/90 overflow-hidden shadow-sm transition-all">
+                        <div className="p-3 bg-neutral-950/80 border-b border-neutral-800/80 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                              <Vote className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="text-xs font-bold text-white tracking-wide flex items-center gap-1.5">
+                              <span>Decision Polls</span>
+                              <span className="text-[10px] font-normal text-neutral-400 hidden sm:inline">&bull; Test & vote together</span>
+                            </span>
+                            {polls.filter((p) => p.status === 'active').length > 0 && (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/30 animate-pulse">
+                                {polls.filter((p) => p.status === 'active').length} active
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsCreatePollOpen(true)}
+                              className="px-2.5 py-1 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95"
+                            >
+                              <Plus className="w-3 h-3 stroke-[3]" />
+                              <span>Create Poll</span>
+                            </button>
+                            {polls.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setShowPollsTray((prev) => !prev)}
+                                className="px-1.5 py-1 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors cursor-pointer text-xs font-mono"
+                                title={showPollsTray ? 'Collapse polls' : 'Expand polls'}
+                              >
+                                {showPollsTray ? 'Hide ▲' : 'Show ▼'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {showPollsTray && (
+                          <div className="p-3 space-y-3 max-h-[240px] overflow-y-auto">
+                            {polls.length === 0 ? (
+                              <div className="py-2.5 px-3.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80 flex items-center justify-between gap-3 text-xs">
+                                <div className="space-y-0.5">
+                                  <p className="text-neutral-300 font-medium text-[11px]">
+                                    No decision polls created yet.
+                                  </p>
+                                  <p className="text-[10px] text-neutral-500">
+                                    Vote on break times, pick focus tracks, or test each other's goals!
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCreatePollOpen(true)}
+                                  className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-amber-300 text-[11px] font-semibold border border-neutral-700 cursor-pointer shrink-0 transition-colors"
+                                >
+                                  + Start Poll
+                                </button>
+                              </div>
+                            ) : (
+                              polls.map((poll) => {
+                                const totalVotes = poll.totalVotes || 0;
+                                const isClosed = poll.status === 'closed';
+                                const isCreator = poll.createdBy === currentUserId;
+
+                                return (
+                                  <div
+                                    key={poll.id}
+                                    className={`p-3 rounded-xl border transition-all ${
+                                      isClosed
+                                        ? 'bg-neutral-950/40 border-neutral-800/60 opacity-80'
+                                        : 'bg-neutral-950/90 border-neutral-800 hover:border-amber-500/30'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span
+                                            className={`text-[9.5px] font-mono uppercase px-1.5 py-0.5 rounded font-bold border ${
+                                              isClosed
+                                                ? 'bg-neutral-800 text-neutral-400 border-neutral-700'
+                                                : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                            }`}
+                                          >
+                                            {isClosed ? 'Decided' : 'Voting Active'}
+                                          </span>
+                                          <span className="text-[10px] text-neutral-500">
+                                            By {poll.createdByName}
+                                          </span>
+                                        </div>
+                                        <h5 className="text-xs font-bold text-neutral-100 mt-1">
+                                          {poll.question}
+                                        </h5>
+                                        {poll.description && (
+                                          <p className="text-[10.5px] text-neutral-400 mt-0.5">
+                                            {poll.description}
+                                          </p>
+                                        )}
+                                      </div>
+
+                                      {isCreator && !isClosed && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleClosePoll(poll.id)}
+                                          className="text-[10px] font-semibold text-neutral-400 hover:text-amber-400 hover:bg-neutral-800 px-2 py-1 rounded-lg border border-neutral-800 transition-colors cursor-pointer shrink-0"
+                                          title="Finalize decision and close poll"
+                                        >
+                                          Close Poll
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {/* Options List */}
+                                    <div className="space-y-1.5 mt-2">
+                                      {poll.options.map((opt) => {
+                                        const count = opt.voterIds ? opt.voterIds.length : 0;
+                                        const percent =
+                                          totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                                        const hasVoted = opt.voterIds?.includes(currentUserId);
+
+                                        return (
+                                          <button
+                                            key={opt.id}
+                                            type="button"
+                                            disabled={isClosed}
+                                            onClick={() => handleVotePoll(poll.id, opt.id)}
+                                            className={`relative w-full text-left p-2 rounded-xl border text-xs overflow-hidden transition-all flex items-center justify-between gap-3 cursor-pointer ${
+                                              hasVoted
+                                                ? 'border-amber-400/70 bg-amber-500/10 text-white ring-1 ring-amber-400/30'
+                                                : isClosed
+                                                ? 'border-neutral-850 bg-neutral-900/30 text-neutral-300'
+                                                : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-850 hover:border-neutral-700 text-neutral-200'
+                                            }`}
+                                          >
+                                            {/* Progress Fill Bar */}
+                                            <div
+                                              className={`absolute inset-y-0 left-0 transition-all duration-500 pointer-events-none ${
+                                                hasVoted ? 'bg-amber-500/25' : 'bg-neutral-800/40'
+                                              }`}
+                                              style={{ width: `${percent}%` }}
+                                            />
+
+                                            <div className="relative z-10 flex items-center gap-2 min-w-0 flex-1">
+                                              <div
+                                                className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                                  hasVoted
+                                                    ? 'border-amber-400 bg-amber-400 text-neutral-950 font-bold'
+                                                    : 'border-neutral-700 bg-neutral-950'
+                                                }`}
+                                              >
+                                                {hasVoted && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                              </div>
+                                              <span className="font-medium truncate text-[11.5px]">
+                                                {opt.text}
+                                              </span>
+                                            </div>
+
+                                            <div className="relative z-10 font-mono text-[10.5px] font-bold shrink-0 flex items-center gap-1.5">
+                                              <span className={hasVoted ? 'text-amber-300' : 'text-neutral-400'}>
+                                                {count} {count === 1 ? 'vote' : 'votes'}
+                                              </span>
+                                              <span className="text-neutral-500">({percent}%)</span>
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[10px] text-neutral-500 mt-2 px-0.5">
+                                      <span>Total: {totalVotes} {totalVotes === 1 ? 'vote' : 'votes'} cast</span>
+                                      <span>Tap option to {poll.options.some((o) => o.voterIds?.includes(currentUserId)) ? 'change' : 'cast'} vote</span>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Chat Messages Feed Container */}
                       <div className="h-[280px] overflow-y-auto space-y-3 p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 shadow-inner">
                         {receivedMessages.length === 0 ? (
@@ -1001,8 +1275,17 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                         <div ref={messagesEndRef} />
                       </div>
 
-                      {/* Quick Focus Reaction Cheers */}
+                      {/* Quick Focus Reaction Cheers & Poll Shortcut */}
                       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatePollOpen(true)}
+                          className="px-2.5 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold text-[11px] whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 shadow-sm shrink-0 active:scale-95"
+                          title="Create a decision poll for the room"
+                        >
+                          <Vote className="w-3 h-3" />
+                          <span>+ Poll</span>
+                        </button>
                         <span className="text-[10px] uppercase font-mono text-neutral-500 shrink-0">Cheers:</span>
                         {['🔥 Locked in!', '💪 Keep pushing!', '☕ Quick break', '🎯 Pomodoro done!', '👋 Hey team!'].map((cheer) => (
                           <button
@@ -1591,6 +1874,181 @@ export const PartyModal: React.FC<PartyModalProps> = ({
                 <span>Keep Focusing</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE DECISION POLL MODAL */}
+      {isCreatePollOpen && (
+        <div
+          id="party-create-poll-modal"
+          className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsCreatePollOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-neutral-900 border border-neutral-800 text-neutral-100 rounded-3xl p-5 sm:p-6 shadow-2xl relative overflow-hidden space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                  <Vote className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Create Decision Poll</h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Test preferences and make group decisions together.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreatePollOpen(false)}
+                className="p-1 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white cursor-pointer transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Template Picker */}
+            <div className="space-y-1.5">
+              <label className="text-[10.5px] uppercase font-mono font-semibold text-neutral-400 block">
+                1-Tap Decision Templates
+              </label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {QUICK_POLL_TEMPLATES.map((tpl, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      setPollQuestion(tpl.title.replace(/^[^a-zA-Z0-9]+/, ''));
+                      setPollOptions([...tpl.options]);
+                    }}
+                    className="p-2 rounded-xl bg-neutral-950/80 hover:bg-neutral-800/80 border border-neutral-800 hover:border-amber-400/40 text-left text-[11px] font-medium text-neutral-300 hover:text-white transition-all cursor-pointer truncate"
+                    title={tpl.title}
+                  >
+                    {tpl.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={handleCreatePollSubmit} className="space-y-3.5">
+              {/* Poll Question */}
+              <div className="space-y-1">
+                <label htmlFor="poll-question-input" className="text-xs font-semibold text-neutral-300 block">
+                  Question / Decision <span className="text-amber-400">*</span>
+                </label>
+                <input
+                  id="poll-question-input"
+                  type="text"
+                  required
+                  maxLength={200}
+                  value={pollQuestion}
+                  onChange={(e) => setPollQuestion(e.target.value)}
+                  placeholder="e.g. Take a 5-min break now or push for 15 more mins?"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white text-xs placeholder:text-neutral-500 focus:outline-none focus:border-amber-400 transition-colors"
+                  autoFocus
+                />
+              </div>
+
+              {/* Optional Description / Context */}
+              <div className="space-y-1">
+                <label htmlFor="poll-desc-input" className="text-xs font-semibold text-neutral-400 block">
+                  Context / Notes (Optional)
+                </label>
+                <input
+                  id="poll-desc-input"
+                  type="text"
+                  maxLength={120}
+                  value={pollDescription}
+                  onChange={(e) => setPollDescription(e.target.value)}
+                  placeholder="e.g. Let's decide how long our next Pomodoro round should be"
+                  className="w-full px-3.5 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white text-xs placeholder:text-neutral-500 focus:outline-none focus:border-amber-400 transition-colors"
+                />
+              </div>
+
+              {/* Poll Options */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-neutral-300 block">
+                    Options (Minimum 2, Maximum 6) <span className="text-amber-400">*</span>
+                  </label>
+                  {pollOptions.length < 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setPollOptions((prev) => [...prev, ''])}
+                      className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add Option</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                  {pollOptions.map((opt, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="w-5 text-center font-mono text-[11px] font-bold text-neutral-500">
+                        {idx + 1}.
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        maxLength={80}
+                        value={opt}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPollOptions((prev) => {
+                            const next = [...prev];
+                            next[idx] = val;
+                            return next;
+                          });
+                        }}
+                        placeholder={`Option ${idx + 1} (e.g. ${idx === 0 ? 'Yes, take 5m break' : idx === 1 ? 'Push 15m more' : 'Option ' + (idx + 1)})`}
+                        className="flex-1 px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white text-xs placeholder:text-neutral-500 focus:outline-none focus:border-amber-400 transition-colors"
+                      />
+                      {pollOptions.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPollOptions((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="p-1.5 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-rose-400 cursor-pointer transition-colors"
+                          title="Remove option"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Submit Actions */}
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatePollOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-neutral-800 hover:bg-neutral-800 text-neutral-300 text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    isSubmittingPoll ||
+                    !pollQuestion.trim() ||
+                    pollOptions.filter((o) => o.trim()).length < 2
+                  }
+                  className="px-5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-neutral-950 text-xs font-bold shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  {isSubmittingPoll ? 'Creating...' : 'Publish Poll to Room'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

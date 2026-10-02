@@ -28,7 +28,7 @@ import {
   Lock,
   Check,
 } from 'lucide-react';
-import { ClockSettings, ThemePreset, AmbientThemePreset, AmbientThemeId } from '../types';
+import { ClockSettings, ThemePreset, AmbientThemePreset, AmbientThemeId, DeviceType } from '../types';
 import { THEME_PRESETS, FONT_OPTIONS, AMBIENT_THEMES } from '../utils/constants';
 import {
   playTickSound,
@@ -64,6 +64,8 @@ interface ClockViewProps {
   pomodoroTimer?: PomodoroTimerController;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  deviceMode?: DeviceType;
+  onToggleDeviceMode?: (mode: DeviceType) => void;
 }
 
 export const ClockView: React.FC<ClockViewProps> = ({
@@ -80,6 +82,8 @@ export const ClockView: React.FC<ClockViewProps> = ({
   pomodoroTimer,
   isDarkMode,
   onToggleDarkMode,
+  deviceMode = 'pc',
+  onToggleDeviceMode,
 }) => {
   const [time, setTime] = useState<Date>(new Date());
   const { isFullscreen, toggleFullscreen } = useFullscreen();
@@ -479,8 +483,24 @@ export const ClockView: React.FC<ClockViewProps> = ({
   const dateNum = time.getDate();
   const year = time.getFullYear();
 
-  // Digit size classes - comfortably proportioned and legible from a distance
+  // Digit size classes - comfortably proportioned and legible from a distance, optimized for mobile screens
   const getDigitSizeStyle = () => {
+    if (deviceMode === 'mobile') {
+      switch (settings.digitSize) {
+        case 'medium':
+          return 'text-5xl sm:text-6xl';
+        case 'large':
+          return 'text-6xl sm:text-7xl';
+        case 'huge':
+          return 'text-7xl sm:text-8xl';
+        case 'fill':
+          return settings.showSeconds
+            ? 'text-[min(13vw,20vh)]'
+            : 'text-[min(19vw,30vh)]';
+        default:
+          return 'text-6xl sm:text-7xl';
+      }
+    }
     switch (settings.digitSize) {
       case 'medium':
         return 'text-7xl sm:text-8xl md:text-9xl lg:text-[10rem]';
@@ -544,7 +564,9 @@ export const ClockView: React.FC<ClockViewProps> = ({
     }
   };
 
-  const canScroll = !isFullscreen && settings.enableScrolling !== false;
+  // For mobile user only, allow scrolling even in full screen!
+  const canScroll =
+    deviceMode === 'mobile' || (!isFullscreen && settings.enableScrolling !== false);
   const matchedBgStyle = getMatchedBackgroundStyle(settings, resolvedTextColor);
 
   return (
@@ -679,10 +701,33 @@ export const ClockView: React.FC<ClockViewProps> = ({
         />
       )}
 
+      {/* Mobile Top Access Bar Trigger Pill (Allows easy tap-to-access on touch devices) */}
+      {deviceMode === 'mobile' && (
+        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+          <button
+            id="clock-mobile-access-bar-btn"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setControlsVisible((prev) => !prev);
+            }}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-mono font-medium backdrop-blur-md border shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all ${
+              controlsVisible
+                ? 'bg-amber-500/25 border-amber-500/50 text-amber-300'
+                : isLight && !hasCustomMediaWallpaper
+                ? 'bg-white/90 border-neutral-300 text-neutral-800'
+                : 'bg-neutral-900/85 border-neutral-700/80 text-neutral-200'
+            }`}
+          >
+            <span>{controlsVisible ? 'Hide Menu ▲' : 'Menu & Settings ▼'}</span>
+          </button>
+        </div>
+      )}
+
       {/* Top Floating Control Bar */}
       <header
         id="clock-header-controls"
-        className={`sticky top-0 left-0 right-0 w-full px-6 py-5 flex items-center justify-between z-40 transition-all duration-300 ${
+        className={`sticky top-0 left-0 right-0 w-full px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between z-40 transition-all duration-300 ${
           controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
         }`}
       >

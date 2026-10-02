@@ -21,7 +21,16 @@ export type ClockFontFamily =
   | 'silkscreen'
   | 'cormorant'
   | 'unbounded'
-  | 'major-mono';
+  | 'major-mono'
+  | 'comfortaa'
+  | 'oxanium'
+  | 'press-start'
+  | 'rubik-mono'
+  | 'fraunces'
+  | 'monoton'
+  | 'rajdhani'
+  | 'dm-serif'
+  | 'bungee';
 
 export type ClockDigitSize = 'medium' | 'large' | 'huge' | 'fill';
 
@@ -43,7 +52,13 @@ export type AmbientThemeId =
   | 'neon-cyber-city'
   | 'autumn-glade'
   | 'emerald-enchanted'
-  | 'desert-dusk';
+  | 'desert-dusk'
+  | 'pine-rain'
+  | 'jazz-cafe'
+  | 'volcano-ember'
+  | 'celestial-void'
+  | 'zen-waterfall'
+  | 'blizzard';
 
 export type AmbientSoundType =
   | 'none'
@@ -334,6 +349,25 @@ export interface PartyMessage {
   text: string;
   createdAt: string;
   isEncrypted?: boolean;
+}
+
+export interface PartyPollOption {
+  id: string;
+  text: string;
+  voterIds: string[];
+}
+
+export interface PartyPoll {
+  id: string;
+  partyId: string;
+  question: string;
+  description?: string;
+  options: PartyPollOption[];
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  status: 'active' | 'closed';
+  totalVotes: number;
 }
 
 export interface UserAccount {

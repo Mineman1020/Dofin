@@ -48,6 +48,8 @@ import {
   LogOut,
   ArrowRight,
   CheckCircle2,
+  Laptop,
+  Smartphone,
 } from 'lucide-react';
 import {
   ClockSettings,
@@ -63,6 +65,7 @@ import {
   WeatherWidgetStyle,
   WidgetTheme,
   UserAccount,
+  DeviceType,
 } from '../types';
 import {
   THEME_PRESETS,
@@ -111,6 +114,8 @@ interface SettingsModalProps {
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
   initialTab?: TabKey;
+  deviceMode?: DeviceType;
+  onToggleDeviceMode?: (mode: DeviceType) => void;
 }
 
 type TabKey = 'clock' | 'pomodoro' | 'general';
@@ -134,6 +139,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isDarkMode,
   onToggleDarkMode,
   initialTab,
+  deviceMode = 'pc',
+  onToggleDeviceMode,
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab || 'clock');
 
@@ -3244,17 +3251,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </label>
                 </div>
 
-                {/* 30s Inactivity Zen Glow Rectangle Mode Toggle */}
+                {/* 15s Inactivity Zen Glow Rectangle Mode Toggle */}
                 <div className="flex items-center justify-between pt-3 border-t border-neutral-800/80">
                   <div className="pr-4">
                     <div className="flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                       <span className="text-xs font-semibold text-neutral-200 block">
-                        Zen Screen Glow Rectangle on 30s Inactivity
+                        Zen Screen Glow Rectangle on 15s Inactivity
                       </span>
                     </div>
                     <span className="text-[11px] text-neutral-400 block mt-0.5">
-                      When timer is running and inactive for 30s, hides side taskbar & controls, expanding the clock into an edge-glowing fullscreen focus rectangle with enlarged digits. Moving mouse pointer instantly restores standard view.
+                      When timer is running and inactive for 15s, hides taskbar & controls, expanding the clock into a clean fullscreen focus perimeter with large digits. On PC move mouse pointer to wake; on Mobile tap the dedicated circle.
                     </span>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer shrink-0">
@@ -4203,6 +4210,65 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Device Optimization Mode Selector */}
+              <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    {deviceMode === 'mobile' ? (
+                      <Smartphone className="w-3.5 h-3.5 text-amber-400" />
+                    ) : (
+                      <Laptop className="w-3.5 h-3.5 text-amber-400" />
+                    )}
+                    <span>Current Device Layout Optimization</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                    {deviceMode === 'mobile' ? 'Mobile Mode' : 'PC Desktop Mode'}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  Controls layout scaling, full-screen scrolling behavior, access bars, and idle screen touch sensors.
+                </p>
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    id="settings-device-mode-mobile-btn"
+                    onClick={() => onToggleDeviceMode?.('mobile')}
+                    className={`p-3 rounded-xl border flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer ${
+                      deviceMode === 'mobile'
+                        ? 'border-amber-400 bg-amber-500/15 text-white ring-1 ring-amber-400/40 shadow-sm'
+                        : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-900 text-neutral-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <Smartphone className="w-4 h-4 text-amber-400" />
+                      <span>Mobile Optimization</span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400 leading-tight">
+                      Touch controls, full-screen scroll & tap-circle idle wake
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="settings-device-mode-pc-btn"
+                    onClick={() => onToggleDeviceMode?.('pc')}
+                    className={`p-3 rounded-xl border flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer ${
+                      deviceMode === 'pc'
+                        ? 'border-amber-400 bg-amber-500/15 text-white ring-1 ring-amber-400/40 shadow-sm'
+                        : 'border-neutral-800 bg-neutral-900/60 hover:bg-neutral-900 text-neutral-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <Laptop className="w-4 h-4 text-amber-400" />
+                      <span>PC / Laptop</span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400 leading-tight">
+                      Widescreen layout, mouse hover bar & pointer idle wake
+                    </span>
+                  </button>
+                </div>
               </div>
 
               {/* Ambient Sounds */}
