@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   CheckCircle2,
   Circle,
@@ -21,9 +21,10 @@ import {
   BarChart3,
   Keyboard,
 } from 'lucide-react';
-import { ClockSettings, PomodoroSettings, PomodoroTask, TaskDifficulty, DeviceType } from '../types';
+import { ClockSettings, PomodoroSettings, PomodoroTask, TaskDifficulty, DeviceType, UserCloudSyncData } from '../types';
 import { recordTaskCompletion } from '../utils/statsStorage';
 import { useFullscreen } from '../utils/useFullscreen';
+import { triggerAutoCloudSync } from '../utils/accountService';
 
 interface TaskTrackerViewProps {
   clockSettings: ClockSettings;
@@ -83,14 +84,42 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
     ];
   });
 
-  // Persist tasks whenever they change
+  // Guards to prevent initial mount and incoming remote sync from echoing/overwriting cloud data
+  const isInitialMount = useRef<boolean>(true);
+  const isRemoteUpdateRef = useRef<boolean>(false);
+
+  // Persist tasks whenever they change and auto-sync to cloud when modified by user
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
     try {
-      localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
+      const serialized = JSON.stringify(tasks);
+      localStorage.setItem(TASKS_STORAGE_KEY, serialized);
+      localStorage.setItem('deskclock_pomodoro_tasks', serialized);
+      triggerAutoCloudSync();
     } catch (e) {
       console.debug('Failed to persist tasks:', e);
     }
   }, [tasks]);
+
+  // Listen for real-time cloud data sync from other devices or sign in
+  useEffect(() => {
+    const onSynced = (e: Event) => {
+      const customEvt = e as CustomEvent<UserCloudSyncData>;
+      if (customEvt.detail?.tasks && Array.isArray(customEvt.detail.tasks)) {
+        isRemoteUpdateRef.current = true;
+        setTasks(customEvt.detail.tasks);
+      }
+    };
+    window.addEventListener('desk_clock_data_synced', onSynced);
+    return () => window.removeEventListener('desk_clock_data_synced', onSynced);
+  }, []);
 
   // Live mini time for header
   const [currentTime, setCurrentTime] = useState<Date>(new Date());

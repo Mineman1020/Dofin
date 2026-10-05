@@ -16,6 +16,7 @@ import {
   syncFocusTimeToParties,
   updatePartyMemberStatus,
 } from './partyService';
+import { triggerAutoCloudSync } from './accountService';
 
 const POMODORO_PERSISTENCE_KEY = 'desk_clock_pomodoro_continuous_state_v2';
 const TASKS_STORAGE_KEY = 'desk_clock_pomodoro_tasks_v1';
@@ -158,6 +159,16 @@ export function usePomodoroTimer(settings: PomodoroSettings): PomodoroTimerContr
   const [consecutiveStreak, setConsecutiveStreak] = useState<number>(() => getConsecutiveDayStreak());
   const [currentDateKey, setCurrentDateKey] = useState<string>(() => formatDateKey(new Date()));
 
+  // Listen for cloud sync updates to keep daily stats & streak indicators live
+  useEffect(() => {
+    const handleSync = () => {
+      setCompletedRounds(getTodayCompletedRounds());
+      setConsecutiveStreak(getConsecutiveDayStreak());
+    };
+    window.addEventListener('desk_clock_data_synced', handleSync);
+    return () => window.removeEventListener('desk_clock_data_synced', handleSync);
+  }, []);
+
   // Wall-Clock Refs
   const endTimeRef = useRef<number | null>(initialData.current.endTime);
   const timeLeftRef = useRef<number>(timeLeft);
@@ -294,13 +305,19 @@ export function usePomodoroTimer(settings: PomodoroSettings): PomodoroTimerContr
       if (activeTaskIdRef.current) {
         const taskId = activeTaskIdRef.current;
         try {
-          const rawTasks = localStorage.getItem(TASKS_STORAGE_KEY);
+          const rawTasks = localStorage.getItem(TASKS_STORAGE_KEY) || localStorage.getItem('deskclock_pomodoro_tasks');
           if (rawTasks) {
             const parsedTasks: PomodoroTask[] = JSON.parse(rawTasks);
             const updatedTasks = parsedTasks.map((t) =>
               t.id === taskId ? { ...t, completedPomodoros: t.completedPomodoros + 1 } : t
             );
-            localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updatedTasks));
+            const serialized = JSON.stringify(updatedTasks);
+            localStorage.setItem(TASKS_STORAGE_KEY, serialized);
+            localStorage.setItem('deskclock_pomodoro_tasks', serialized);
+            triggerAutoCloudSync();
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('desk_clock_data_synced', { detail: { tasks: updatedTasks } }));
+            }
           }
         } catch (e) {
           console.debug('Failed to increment task pomodoros', e);

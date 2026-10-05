@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock } from 'lucide-react';
 import { playIntroEffectSound } from '../utils/audio';
+import { DekLogo } from './DekLogo';
 
 interface StartupRevealProps {
   onComplete: () => void;
@@ -11,8 +11,8 @@ export const StartupReveal: React.FC<StartupRevealProps> = ({
   onComplete,
   isDarkMode = false,
 }) => {
-  // 'initial' -> 'showing' (paused stationary for ~1.1s) -> 'zooming' (smooth hardware-accelerated spread) -> 'complete'
-  const [stage, setStage] = useState<'initial' | 'showing' | 'zooming' | 'complete'>('initial');
+  // 'initial' -> 'showing' -> 'expanding' -> 'complete'
+  const [stage, setStage] = useState<'initial' | 'showing' | 'expanding' | 'complete'>('initial');
   const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
 
   useEffect(() => {
@@ -23,118 +23,151 @@ export const StartupReveal: React.FC<StartupRevealProps> = ({
       console.debug('Audio chime error:', e);
     }
 
-    // 2. Fade in the logo immediately
+    // 2. Entrance phase
     const tShow = setTimeout(() => {
       setStage('showing');
-    }, 40);
+    }, 50);
     timeoutRefs.current.push(tShow);
 
-    // 3. Keep logo stopped/stationary for a full second so user can see it clearly, then begin the zoom
-    const tZoom = setTimeout(() => {
-      setStage('zooming');
-    }, 1250);
-    timeoutRefs.current.push(tZoom);
+    // 3. Keep logo steady for full appreciation, then expand into app
+    const tExpand = setTimeout(() => {
+      setStage('expanding');
+    }, 1450);
+    timeoutRefs.current.push(tExpand);
 
-    // 4. Complete the transition and reveal the welcome screen
+    // 4. Complete transition and reveal the workspace
     const tComplete = setTimeout(() => {
       setStage('complete');
       onComplete();
-    }, 2050);
+    }, 2250);
     timeoutRefs.current.push(tComplete);
 
-    const handleSkip = () => {
-      setStage('zooming');
-      const tFast = setTimeout(() => {
-        setStage('complete');
-        onComplete();
-      }, 350);
-      timeoutRefs.current.push(tFast);
+    // Skip handler on Space, Enter, or Escape
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['Space', 'Enter', 'Escape'].includes(e.code) || e.key === ' ' || e.key === 'Enter' || e.key === 'Escape') {
+        e.preventDefault();
+        setStage('expanding');
+        const tFast = setTimeout(() => {
+          setStage('complete');
+          onComplete();
+        }, 320);
+        timeoutRefs.current.push(tFast);
+      }
     };
 
-    window.addEventListener('keydown', handleSkip);
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       timeoutRefs.current.forEach(clearTimeout);
-      window.removeEventListener('keydown', handleSkip);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [onComplete]);
 
   if (stage === 'complete') return null;
 
-  const isZooming = stage === 'zooming';
-  const isShowing = stage === 'showing' || isZooming;
+  const isExpanding = stage === 'expanding';
+  const isShowing = stage === 'showing' || isExpanding;
+
+  const handleSkipClick = () => {
+    setStage('expanding');
+    const tFast = setTimeout(() => {
+      setStage('complete');
+      onComplete();
+    }, 320);
+    timeoutRefs.current.push(tFast);
+  };
 
   return (
     <div
       id="zoom-intro-reveal"
-      onClick={() => {
-        setStage('zooming');
-        setTimeout(() => {
-          setStage('complete');
-          onComplete();
-        }, 350);
-      }}
-      className={`fixed inset-0 z-50 flex items-center justify-center select-none overflow-hidden cursor-pointer transition-opacity duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] ${
-        isZooming ? 'opacity-0 pointer-events-none' : 'opacity-100'
-      } ${isDarkMode ? 'bg-[#07090e]' : 'bg-[#0b0e14]'}`}
+      onClick={handleSkipClick}
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-center select-none overflow-hidden cursor-pointer transition-opacity duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] ${
+        isExpanding ? 'opacity-0 pointer-events-none' : 'opacity-100'
+      } ${isDarkMode ? 'bg-[#06080d]' : 'bg-[#090c12]'}`}
       style={{
         transform: 'translate3d(0, 0, 0)',
         willChange: 'opacity',
       }}
     >
-      {/* Ambient background radial glow - stationary, no filter animations for max FPS */}
+      {/* Background Animated Subtle Atmospheric Light */}
       <div
-        className={`absolute w-[460px] h-[460px] rounded-full bg-radial from-amber-500/18 via-amber-600/5 to-transparent pointer-events-none transition-opacity duration-600 ${
-          isZooming ? 'opacity-0' : 'opacity-100'
-        }`}
+        className={`absolute w-[600px] h-[600px] rounded-full pointer-events-none transition-all duration-1000 ${
+          isShowing ? 'opacity-100 scale-100' : 'opacity-0 scale-75'
+        } ${isExpanding ? 'scale-150 opacity-0' : ''}`}
+        style={{
+          background: 'radial-gradient(circle, rgba(245, 158, 11, 0.16) 0%, rgba(217, 119, 6, 0.06) 45%, rgba(0, 0, 0, 0) 70%)',
+        }}
       />
 
-      {/* Main Logo Card - Perfectly Stationary for 1.1s, then smoothly spreads outward */}
+      {/* Orbit Chrono Background Track */}
+      <div
+        className={`absolute w-[360px] h-[360px] sm:w-[420px] sm:h-[420px] rounded-full border border-amber-500/10 pointer-events-none transition-all duration-1000 ${
+          isShowing ? 'opacity-100 rotate-0' : 'opacity-0 -rotate-45'
+        } ${isExpanding ? 'scale-125 opacity-0' : ''}`}
+      />
+      <div
+        className={`absolute w-[460px] h-[460px] sm:w-[540px] sm:h-[540px] rounded-full border border-dashed border-amber-500/8 pointer-events-none transition-all duration-1000 ${
+          isShowing ? 'opacity-100 rotate-0' : 'opacity-0 rotate-45'
+        } ${isExpanding ? 'scale-125 opacity-0' : ''}`}
+      />
+
+      {/* Main Logo Card & Typography Stage */}
       <div
         className="relative z-10 flex flex-col items-center justify-center"
         style={{
-          transform: isZooming
+          transform: isExpanding
             ? 'translate3d(0, 0, 0) scale(8.5)'
             : isShowing
             ? 'translate3d(0, 0, 0) scale(1)'
             : 'translate3d(0, 0, 0) scale(0.92)',
-          opacity: isZooming ? 0 : isShowing ? 1 : 0,
-          transition: isZooming
+          opacity: isExpanding ? 0 : isShowing ? 1 : 0,
+          transition: isExpanding
             ? 'transform 750ms cubic-bezier(0.4, 0, 0.2, 1), opacity 650ms cubic-bezier(0.4, 0, 0.2, 1)'
-            : 'transform 350ms cubic-bezier(0.16, 1, 0.3, 1), opacity 350ms ease-out',
+            : 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 420ms ease-out',
           willChange: 'transform, opacity',
           backfaceVisibility: 'hidden',
         }}
       >
-        {/* Emblem Squircle */}
-        <div className="relative mb-5">
-          <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-[2rem] bg-gradient-to-br from-amber-300 via-amber-500 to-amber-600 p-[2.5px] shadow-[0_16px_40px_rgba(245,158,11,0.35)] flex items-center justify-center">
-            {/* Obsidian Inner Face */}
-            <div className="w-full h-full rounded-[calc(2rem-2.5px)] bg-[#12151c] flex items-center justify-center relative overflow-hidden">
-              {/* Dial Ring */}
-              <div className="absolute inset-2.5 rounded-full border border-amber-400/25 pointer-events-none" />
-
-              {/* Glowing Clock Monogram */}
-              <Clock className="w-12 h-12 sm:w-14 sm:h-14 text-amber-300 drop-shadow-[0_2px_12px_rgba(245,158,11,0.7)] relative z-10" />
-            </div>
-          </div>
+        {/* Emblem */}
+        <div className="relative mb-5.5">
+          <DekLogo size={124} glow={true} animated={true} />
         </div>
 
-        {/* Brand Text - Fades cleanly during the zoom */}
+        {/* Brand Text */}
         <div
-          className="text-center space-y-1"
+          className="text-center space-y-2"
           style={{
-            opacity: isZooming ? 0 : 1,
-            transition: 'opacity 300ms ease-out',
+            opacity: isExpanding ? 0 : isShowing ? 1 : 0,
+            transform: isExpanding ? 'translateY(10px)' : isShowing ? 'translateY(0)' : 'translateY(8px)',
+            transition: 'opacity 350ms ease-out 100ms, transform 400ms ease-out 100ms',
           }}
         >
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-sm font-sans">
-            Desk Station
-          </h1>
-          <p className="text-xs text-amber-400/90 font-mono tracking-widest uppercase">
-            Ambient Time & Focus
-          </p>
+          <div className="flex items-center justify-center gap-2">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-[0.2em] uppercase text-transparent bg-clip-text bg-gradient-to-r from-amber-100 via-amber-300 to-amber-500 drop-shadow-[0_2px_16px_rgba(245,158,11,0.4)] font-sans">
+              Dek
+            </h1>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 text-xs font-mono tracking-[0.25em] text-neutral-400 uppercase">
+            <span className="text-amber-400">Ambient</span>
+            <span className="text-neutral-600">•</span>
+            <span>Time</span>
+            <span className="text-neutral-600">•</span>
+            <span className="text-amber-400">Focus</span>
+          </div>
         </div>
+      </div>
+
+      {/* Subtle Bottom Skip Hint */}
+      <div
+        className={`absolute bottom-8 z-10 text-[11px] font-mono tracking-wider text-neutral-500 transition-opacity duration-500 flex items-center gap-2 ${
+          isExpanding ? 'opacity-0' : isShowing ? 'opacity-70 hover:opacity-100' : 'opacity-0'
+        }`}
+      >
+        <span className="px-2 py-0.5 rounded-md bg-neutral-900 border border-neutral-800 text-neutral-400 text-[10px]">
+          Space
+        </span>
+        <span>or click to enter</span>
       </div>
     </div>
   );

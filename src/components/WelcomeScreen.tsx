@@ -27,6 +27,7 @@ import { ClockSettings, PomodoroSettings, ViewMode, UserAccount, DeviceType } fr
 import { THEME_PRESETS, FONT_OPTIONS, FONT_OPTICAL_SCALES } from '../utils/constants';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
 import { useFullscreen } from '../utils/useFullscreen';
+import { DekLogo } from './DekLogo';
 
 interface WelcomeScreenProps {
   userName: string;
@@ -289,11 +290,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         } backdrop-blur-xl`}
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 text-neutral-950 flex items-center justify-center font-bold shadow-md shadow-amber-500/20">
-            <Clock className="w-4.5 h-4.5" />
-          </div>
+          <DekLogo size={36} glow={true} />
           <div>
-            <h1 className="text-sm sm:text-base font-bold tracking-tight">Desk Station</h1>
+            <h1 className="text-sm sm:text-base font-bold tracking-tight">Dek</h1>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Ambient Time & Focus</p>
           </div>
         </div>

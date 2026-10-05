@@ -34,7 +34,9 @@ import {
   AmbientThemePreset,
   DeviceType,
   TaskDifficulty,
+  UserCloudSyncData,
 } from '../types';
+import { triggerAutoCloudSync } from '../utils/accountService';
 import {
   triggerSoundAlert,
   playPomodoroStart,
@@ -194,6 +196,10 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   const [hoveredTask, setHoveredTask] = useState<PomodoroTask | null>(null);
   const [displayTask, setDisplayTask] = useState<PomodoroTask | null>(null);
   const [isIdle, setIsIdle] = useState<boolean>(false);
+
+  // Guards to prevent initial mount and incoming remote sync from echoing/overwriting cloud data
+  const isInitialMount = useRef<boolean>(true);
+  const isRemoteUpdateRef = useRef<boolean>(false);
 
   // Active Party state for header badge & live sync
   const [activeParty, setActiveParty] = useState<Party | null>(null);
@@ -384,14 +390,38 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     };
   }, [isTaskModalOpen]);
 
-  // Save tasks to localStorage
+  // Save tasks to localStorage and auto-sync to cloud when modified by user
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
     try {
-      localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
+      const serialized = JSON.stringify(tasks);
+      localStorage.setItem(TASKS_STORAGE_KEY, serialized);
+      localStorage.setItem('deskclock_pomodoro_tasks', serialized);
+      triggerAutoCloudSync();
     } catch (e) {
       console.debug('Failed to save tasks:', e);
     }
   }, [tasks]);
+
+  // Listen for real-time cloud data sync from other devices
+  useEffect(() => {
+    const onSynced = (e: Event) => {
+      const customEvt = e as CustomEvent<UserCloudSyncData>;
+      if (customEvt.detail?.tasks && Array.isArray(customEvt.detail.tasks)) {
+        isRemoteUpdateRef.current = true;
+        setTasks(customEvt.detail.tasks);
+      }
+    };
+    window.addEventListener('desk_clock_data_synced', onSynced);
+    return () => window.removeEventListener('desk_clock_data_synced', onSynced);
+  }, []);
 
   const activeTask = tasks.find((t) => t.id === activeTaskId);
   const activeTasksList = tasks.filter((t) => !t.isCompleted);

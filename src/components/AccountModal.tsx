@@ -18,6 +18,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { UserAccount, UserCloudSyncData, DeviceType } from '../types';
+import { DekLogo } from './DekLogo';
 import {
   createAccount,
   signIn,
@@ -58,7 +59,6 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState(currentGuestName || '');
   const [showPassword, setShowPassword] = useState(false);
-  const [syncDeviceProgressOnLogin, setSyncDeviceProgressOnLogin] = useState(true);
   const [selectedDevice, setSelectedDevice] = useState<DeviceType>(() => {
     if (currentDeviceMode) return currentDeviceMode;
     try {
@@ -157,16 +157,17 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         // Sign in
         const { account, syncData } = await signIn(formatted, password);
         
-        // If user opted to merge/sync this device's progress to their account
-        if (syncDeviceProgressOnLogin) {
-          try {
-            await syncLocalDataToCloud(account);
-          } catch (syncErr) {
-            console.debug('Background sync on login notice:', syncErr);
-          }
-        }
+        // Count synced items to give the user rich confirmation
+        const taskCount = syncData?.tasks?.length || 0;
+        const hasStats = Boolean(syncData?.stats && Object.keys(syncData.stats).length > 0);
+        const statsSummary = hasStats ? 'focus stats' : '';
+        const items = [
+          taskCount > 0 ? `${taskCount} task${taskCount > 1 ? 's' : ''}` : 'tasks',
+          statsSummary,
+          'custom settings',
+        ].filter(Boolean).join(', ');
 
-        setSuccessMsg(`Welcome back, ${account.displayName}! Synced with ${account.username}.`);
+        setSuccessMsg(`Welcome back, ${account.displayName}! Synced ${items} from ${account.username}.`);
         setTimeout(() => {
           onAccountSuccess(account, syncData, selectedDevice);
         }, 600);
@@ -226,9 +227,13 @@ export const AccountModal: React.FC<AccountModalProps> = ({
 
         {/* Header */}
         <div className="flex items-center gap-3.5 pr-8">
-          <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0 shadow-inner">
-            {mode === 'guest' ? <User className="w-5 h-5" /> : <Cloud className="w-5 h-5" />}
-          </div>
+          {mode === 'guest' ? (
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0 shadow-inner">
+              <User className="w-5 h-5" />
+            </div>
+          ) : (
+            <DekLogo size={42} glow={false} />
+          )}
           <div>
             <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
               {mode === 'create'
@@ -498,19 +503,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             </div>
           )}
 
-          {/* Sync Progress Checkbox when logging in */}
+          {/* Cloud Sync Status info card when logging in */}
           {mode === 'login' && (
-            <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 cursor-pointer text-xs text-neutral-300">
-              <input
-                type="checkbox"
-                checked={syncDeviceProgressOnLogin}
-                onChange={(e) => setSyncDeviceProgressOnLogin(e.target.checked)}
-                className="mt-0.5 rounded text-amber-500 focus:ring-amber-400 border-neutral-700"
-              />
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200/90">
+              <Cloud className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <span>
-                <strong>Sync device progress:</strong> Merge any clock settings, tasks, and streaks gathered on this device into this account upon logging in.
+                <strong>Full Cross-Device Synchronization:</strong> All tasks, focus statistics, themes, fonts, colors, and settings from your account will automatically sync to this device.
               </span>
-            </label>
+            </div>
           )}
 
           {/* DEVICE SELECTION & UI OPTIMIZATION (Every user chooses Mobile or PC) */}

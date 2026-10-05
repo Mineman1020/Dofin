@@ -1,4 +1,5 @@
 import { PomodoroTask } from '../types';
+import { triggerAutoCloudSync } from './accountService';
 
 export interface DayStatsRecord {
   date: string; // YYYY-MM-DD
@@ -110,7 +111,10 @@ export function recordFocusMinutes(minutes: number, isCompletedSession: boolean 
       tasksCompleted: current.tasksCompleted || 0,
     };
     
-    localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(stats));
+    const serialized = JSON.stringify(stats);
+    localStorage.setItem(STATS_STORAGE_KEY, serialized);
+    localStorage.setItem('desk_clock_focus_stats_v1', serialized);
+    triggerAutoCloudSync();
   } catch (e) {
     console.error('Error recording focus minutes', e);
   }
@@ -128,7 +132,10 @@ export function recordTaskCompletion(increment: number = 1): void {
       tasksCompleted: Math.max(0, (current.tasksCompleted || 0) + increment),
     };
     
-    localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(stats));
+    const serialized = JSON.stringify(stats);
+    localStorage.setItem(STATS_STORAGE_KEY, serialized);
+    localStorage.setItem('desk_clock_focus_stats_v1', serialized);
+    triggerAutoCloudSync();
   } catch (e) {
     console.error('Error recording task completion', e);
   }
@@ -137,7 +144,10 @@ export function recordTaskCompletion(increment: number = 1): void {
 // Reset stats to fresh demo baseline or clear
 export function resetStatsToDemo(): void {
   const seeded = seedInitialWeekStats();
-  localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(seeded));
+  const serialized = JSON.stringify(seeded);
+  localStorage.setItem(STATS_STORAGE_KEY, serialized);
+  localStorage.setItem('desk_clock_focus_stats_v1', serialized);
+  triggerAutoCloudSync();
 }
 
 // Get weekly stats breakdown for a week (offset: 0 = current week, -1 = last week, etc.)

@@ -382,11 +382,14 @@ export interface UserAccount {
 export interface UserCloudSyncData {
   userName?: string;
   isDarkMode?: boolean;
+  deviceMode?: 'pc' | 'mobile';
   clockSettings?: ClockSettings;
   pomodoroSettings?: PomodoroSettings;
   tasks?: PomodoroTask[];
-  stats?: unknown;
+  stats?: Record<string, { focusMinutes: number; completedSessions: number; tasksCompleted: number }>;
   completedRounds?: number;
   consecutiveStreak?: number;
+  savedPartyIds?: string[];
+  activePartyId?: string | null;
   syncedAt: string;
 }

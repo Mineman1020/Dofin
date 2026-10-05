@@ -24,6 +24,9 @@ import {
   signOut,
   syncLocalDataToCloud,
   pullCloudDataToLocal,
+  triggerAutoCloudSync,
+  forceCloudSyncNow,
+  subscribeToAccountCloudSync,
 } from './utils/accountService';
 
 const STORAGE_KEYS = {
@@ -215,6 +218,7 @@ export default function App() {
       } catch (e) {
         console.debug('Failed to save dark mode preference:', e);
       }
+      triggerAutoCloudSync();
       return next;
     });
   };
@@ -228,7 +232,48 @@ export default function App() {
     } catch (e) {
       console.debug('Failed to save username to localStorage', e);
     }
+    triggerAutoCloudSync();
   };
+
+  // Listen for real-time cloud data sync updates across all devices
+  useEffect(() => {
+    if (!userAccount) return;
+    const unsub = subscribeToAccountCloudSync(userAccount, (syncData) => {
+      if (syncData.userName) {
+        setUserName(syncData.userName);
+      }
+      if (syncData.clockSettings) {
+        setClockSettings((prev) => ({ ...DEFAULT_CLOCK_SETTINGS, ...prev, ...syncData.clockSettings }));
+      }
+      if (syncData.pomodoroSettings) {
+        setPomodoroSettings((prev) => ({ ...DEFAULT_POMODORO_SETTINGS, ...prev, ...syncData.pomodoroSettings }));
+      }
+      if (syncData.isDarkMode !== undefined) {
+        setIsDarkMode(syncData.isDarkMode);
+      }
+    });
+    return () => unsub();
+  }, [userAccount]);
+
+  // Also listen for local custom event 'desk_clock_data_synced' (from sign-in, manual pull, etc.)
+  useEffect(() => {
+    const handleLocalSyncEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<UserCloudSyncData>;
+      const syncData = customEvt.detail;
+      if (!syncData) return;
+      if (syncData.userName) setUserName(syncData.userName);
+      if (syncData.clockSettings) {
+        setClockSettings((prev) => ({ ...DEFAULT_CLOCK_SETTINGS, ...prev, ...syncData.clockSettings }));
+      }
+      if (syncData.pomodoroSettings) {
+        setPomodoroSettings((prev) => ({ ...DEFAULT_POMODORO_SETTINGS, ...prev, ...syncData.pomodoroSettings }));
+      }
+      if (syncData.isDarkMode !== undefined) setIsDarkMode(syncData.isDarkMode);
+    };
+
+    window.addEventListener('desk_clock_data_synced', handleLocalSyncEvent);
+    return () => window.removeEventListener('desk_clock_data_synced', handleLocalSyncEvent);
+  }, []);
 
   // Account modal openers & handlers
   const handleOpenAccountModal = (
@@ -258,14 +303,20 @@ export default function App() {
     }
 
     if (syncData) {
+      if (syncData.userName) {
+        setUserName(syncData.userName);
+      }
       if (syncData.clockSettings) {
-        setClockSettings((prev) => ({ ...prev, ...syncData.clockSettings }));
+        setClockSettings((prev) => ({ ...DEFAULT_CLOCK_SETTINGS, ...prev, ...syncData.clockSettings }));
       }
       if (syncData.pomodoroSettings) {
-        setPomodoroSettings((prev) => ({ ...prev, ...syncData.pomodoroSettings }));
+        setPomodoroSettings((prev) => ({ ...DEFAULT_POMODORO_SETTINGS, ...prev, ...syncData.pomodoroSettings }));
       }
       if (syncData.isDarkMode !== undefined) {
         setIsDarkMode(syncData.isDarkMode);
+      }
+      if (!deviceType && syncData.deviceMode) {
+        setDeviceMode(syncData.deviceMode);
       }
     }
     setIsAccountModalOpen(false);
@@ -293,7 +344,7 @@ export default function App() {
 
   const handleSyncAccount = async () => {
     if (!userAccount) return;
-    await syncLocalDataToCloud(userAccount);
+    await forceCloudSyncNow(userAccount);
   };
 
   const handlePullCloudData = async () => {
@@ -304,10 +355,10 @@ export default function App() {
         setUserName(syncData.userName);
       }
       if (syncData.clockSettings) {
-        setClockSettings((prev) => ({ ...prev, ...syncData.clockSettings }));
+        setClockSettings((prev) => ({ ...DEFAULT_CLOCK_SETTINGS, ...prev, ...syncData.clockSettings }));
       }
       if (syncData.pomodoroSettings) {
-        setPomodoroSettings((prev) => ({ ...prev, ...syncData.pomodoroSettings }));
+        setPomodoroSettings((prev) => ({ ...DEFAULT_POMODORO_SETTINGS, ...prev, ...syncData.pomodoroSettings }));
       }
       if (syncData.isDarkMode !== undefined) {
         setIsDarkMode(syncData.isDarkMode);
@@ -324,6 +375,7 @@ export default function App() {
       } catch (e) {
         console.debug('Failed to save clock settings', e);
       }
+      triggerAutoCloudSync();
       return next;
     });
   };
@@ -337,6 +389,7 @@ export default function App() {
       } catch (e) {
         console.debug('Failed to save pomodoro settings', e);
       }
+      triggerAutoCloudSync();
       return next;
     });
   };
@@ -468,7 +521,7 @@ export default function App() {
 
   return (
     <div
-      id="desk-station-app"
+      id="dek-app"
       className={`relative w-full select-none overflow-x-hidden ${
         canScroll ? 'min-h-screen overflow-y-auto' : 'h-screen overflow-hidden'
       } transition-colors duration-500 ${

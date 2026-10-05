@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -84,6 +84,15 @@ export const StatsView: React.FC<StatsViewProps> = ({
   const [unitMode, setUnitMode] = useState<'minutes' | 'hours'>('minutes');
   const { isFullscreen, toggleFullscreen } = useFullscreen();
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+
+  // Auto-refresh charts when cloud data sync event arrives
+  useEffect(() => {
+    const onDataSynced = () => {
+      setRefreshTrigger((prev) => prev + 1);
+    };
+    window.addEventListener('desk_clock_data_synced', onDataSynced);
+    return () => window.removeEventListener('desk_clock_data_synced', onDataSynced);
+  }, []);
 
   // Compute weekly statistics
   const weeklyData = useMemo(() => {
