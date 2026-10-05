@@ -17,6 +17,7 @@ import {
   updatePartyMemberStatus,
 } from './partyService';
 import { triggerAutoCloudSync } from './accountService';
+import { loadAndPruneTasks } from './taskStorage';
 
 const POMODORO_PERSISTENCE_KEY = 'desk_clock_pomodoro_continuous_state_v2';
 const TASKS_STORAGE_KEY = 'desk_clock_pomodoro_tasks_v1';
@@ -359,6 +360,20 @@ export function usePomodoroTimer(settings: PomodoroSettings): PomodoroTimerContr
 
       // Recalculate streak (preserves streak if user was active yesterday, resets if missed)
       setConsecutiveStreak(getConsecutiveDayStreak());
+
+      // Prune tasks completed before midnight 12:00 AM (keep unfinished tasks)
+      try {
+        const pruned = loadAndPruneTasks();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('desk_clock_data_synced', {
+              detail: { tasks: pruned },
+            })
+          );
+        }
+      } catch (e) {
+        console.debug('Failed to prune tasks on midnight rollover in timer', e);
+      }
 
       // Save refreshed daily metadata to disk
       saveStateToDisk(

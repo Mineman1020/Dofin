@@ -1,12 +1,36 @@
 @import "tailwindcss";
 
 html,
-body,
-#root {
-  height: 100%;
+body {
   width: 100%;
   margin: 0;
   padding: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+#root {
+  min-height: 100%;
+  width: 100%;
+}
+
+/* Ensure mobile mode can scroll freely even when in fullscreen */
+html.mobile-device-mode,
+body.mobile-device-mode,
+.mobile-device-mode #root {
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100% !important;
+  touch-action: pan-y !important;
+}
+
+@media (max-width: 768px) {
+  html,
+  body {
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100% !important;
+    touch-action: pan-y !important;
+  }
 }
 
 @keyframes fadeIn {

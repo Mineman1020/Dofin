@@ -49,15 +49,35 @@ export function isWindowFullscreen(): boolean {
 }
 
 /**
- * Custom React hook for unified fullscreen state management and scroll locking.
+ * Detect if currently running on mobile device or in mobile optimization mode
  */
-export function useFullscreen() {
+export function isMobileDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const saved = localStorage.getItem('desk_clock_device_mode');
+    if (saved === 'mobile') return true;
+    if (saved === 'pc') return false;
+  } catch {}
+  return (
+    window.innerWidth < 768 ||
+    /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  );
+}
+
+/**
+ * Custom React hook for unified fullscreen state management and scroll locking.
+ * For mobile devices, scrolling is preserved even after entering fullscreen!
+ */
+export function useFullscreen(isMobileOverride?: boolean) {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => isWindowFullscreen());
 
   const applyScrollLock = useCallback((fullscreenActive: boolean) => {
     if (typeof document === 'undefined') return;
 
-    if (fullscreenActive) {
+    // For the mobile app, allow the user to scroll even after pressing the full screen button!
+    const isMobile = isMobileOverride !== undefined ? isMobileOverride : isMobileDevice();
+
+    if (fullscreenActive && !isMobile) {
       document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
       document.documentElement.classList.add('app-fullscreen');
@@ -68,7 +88,7 @@ export function useFullscreen() {
       document.documentElement.classList.remove('app-fullscreen');
       document.body.classList.remove('app-fullscreen');
     }
-  }, []);
+  }, [isMobileOverride]);
 
   const updateFullscreen = useCallback(() => {
     const active = isWindowFullscreen();

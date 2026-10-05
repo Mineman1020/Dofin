@@ -63,6 +63,12 @@ import { recordTaskCompletion } from '../utils/statsStorage';
 import { AmbientBackground } from './AmbientBackground';
 import { PomodoroTimerController } from '../utils/usePomodoroTimer';
 import { useFullscreen } from '../utils/useFullscreen';
+import {
+  loadAndPruneTasks,
+  persistTasksToStorage,
+  setupMidnightTaskPruner,
+  pruneExpiredCompletedTasks,
+} from '../utils/taskStorage';
 
 interface PomodoroViewProps {
   settings: PomodoroSettings;
@@ -125,7 +131,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     setActiveTaskId,
   } = timer;
 
-  const hookFs = useFullscreen();
+  const hookFs = useFullscreen(deviceMode === 'mobile');
   const isFullscreen = propIsFullscreen !== undefined ? propIsFullscreen : hookFs.isFullscreen;
   const toggleFullscreen = propToggleFullscreen || hookFs.toggleFullscreen;
 
@@ -166,26 +172,9 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     }
   }, [settings.ambientSoundVolume, settings.ambientSoundEnabled]);
 
-  // Task Management State
+  // Task Management State with midnight auto-pruning
   const [tasks, setTasks] = useState<PomodoroTask[]>(() => {
-    try {
-      const saved = localStorage.getItem(TASKS_STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.debug('Failed to load tasks:', e);
-    }
-    return [
-      {
-        id: '1',
-        title: 'Deep study & complete assignments',
-        estimatedPomodoros: 2,
-        completedPomodoros: 0,
-        isCompleted: false,
-        createdAt: Date.now(),
-      },
-    ];
+    return loadAndPruneTasks();
   });
 
   const [newTaskTitle, setNewTaskTitle] = useState<string>('');
@@ -400,15 +389,17 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       isRemoteUpdateRef.current = false;
       return;
     }
-    try {
-      const serialized = JSON.stringify(tasks);
-      localStorage.setItem(TASKS_STORAGE_KEY, serialized);
-      localStorage.setItem('deskclock_pomodoro_tasks', serialized);
-      triggerAutoCloudSync();
-    } catch (e) {
-      console.debug('Failed to save tasks:', e);
-    }
+    persistTasksToStorage(tasks);
   }, [tasks]);
+
+  // Midnight 12:00 AM auto-pruning scheduler: automatically removes tasks done before midnight
+  useEffect(() => {
+    const cleanup = setupMidnightTaskPruner((prunedTasks) => {
+      isRemoteUpdateRef.current = true;
+      setTasks(prunedTasks);
+    });
+    return cleanup;
+  }, []);
 
   // Listen for real-time cloud data sync from other devices
   useEffect(() => {
@@ -416,7 +407,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
       const customEvt = e as CustomEvent<UserCloudSyncData>;
       if (customEvt.detail?.tasks && Array.isArray(customEvt.detail.tasks)) {
         isRemoteUpdateRef.current = true;
-        setTasks(customEvt.detail.tasks);
+        setTasks(pruneExpiredCompletedTasks(customEvt.detail.tasks));
       }
     };
     window.addEventListener('desk_clock_data_synced', onSynced);
@@ -430,10 +421,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
   // Sync tasks state when pomodoro sessions complete
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(TASKS_STORAGE_KEY);
-      if (saved) {
-        setTasks(JSON.parse(saved));
-      }
+      setTasks(loadAndPruneTasks());
     } catch (e) {
       console.debug('Failed to sync tasks from storage', e);
     }
@@ -1001,11 +989,11 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
           <span>{formattedSeconds}</span>
         </div>
 
-        {/* Mobile Tap-To-Exit Idle Circle Button (Only tapping this circle exits idle mode on mobile) */}
-        {deviceMode === 'mobile' && isZenIdle && (
-          <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-auto z-40 animate-fadeIn">
+        {/* Tap/Click To Exit Idle Screen Button (Positioned in Bottom Right Corner) */}
+        {isZenIdle && (
+          <div className="absolute bottom-6 right-6 sm:bottom-8 sm:right-8 flex flex-col items-end gap-1.5 pointer-events-auto z-40 animate-fadeIn">
             <button
-              id="pomodoro-mobile-exit-idle-btn"
+              id="pomodoro-exit-idle-btn"
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1015,14 +1003,14 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                 e.stopPropagation();
                 setIsZenIdle(false);
               }}
-              className="w-14 h-14 rounded-full border-2 border-white/60 bg-neutral-900/90 backdrop-blur-md text-white flex items-center justify-center shadow-2xl active:scale-90 transition-transform cursor-pointer ring-4 ring-white/10"
-              title="Tap circle to exit idle screen"
+              className="w-13 h-13 sm:w-14 sm:h-14 rounded-full border-2 border-white/60 bg-neutral-900/90 backdrop-blur-md text-white flex items-center justify-center shadow-2xl active:scale-90 hover:scale-105 transition-transform cursor-pointer ring-4 ring-white/10"
+              title="Click or tap to exit idle screen"
             >
               <span className="w-5 h-5 rounded-full border-2 border-white/70 flex items-center justify-center">
                 <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
               </span>
             </button>
-            <span className="text-[11px] font-mono tracking-wider uppercase text-neutral-300 bg-black/60 px-3 py-1 rounded-full backdrop-blur-md border border-white/10 select-none">
+            <span className="text-[10px] sm:text-[11px] font-mono tracking-wider uppercase text-neutral-300 bg-black/60 px-2.5 py-1 rounded-full backdrop-blur-md border border-white/10 select-none shadow">
               Tap circle to wake
             </span>
           </div>

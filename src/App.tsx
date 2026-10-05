@@ -78,6 +78,19 @@ export default function App() {
     }
   };
 
+  // Sync mobile device class to document so mobile scrolling is uninhibited in fullscreen
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      if (deviceMode === 'mobile') {
+        document.documentElement.classList.add('mobile-device-mode');
+        document.body.classList.add('mobile-device-mode');
+      } else {
+        document.documentElement.classList.remove('mobile-device-mode');
+        document.body.classList.remove('mobile-device-mode');
+      }
+    }
+  }, [deviceMode]);
+
   // First-time Entry Account Modal: prompt user on first arrival to create account, sign in, or continue as guest
   const [showStartupReveal, setShowStartupReveal] = useState<boolean>(true);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
@@ -182,7 +195,8 @@ export default function App() {
   const pomodoroTimer = usePomodoroTimer(pomodoroSettings);
 
   // Fullscreen State & Controller using multi-layered detection (Fullscreen API, CSS media queries, and window metrics)
-  const { isFullscreen, toggleFullscreen: handleToggleFullscreen } = useFullscreen();
+  // For mobile users, scrolling is preserved even after entering fullscreen
+  const { isFullscreen, toggleFullscreen: handleToggleFullscreen } = useFullscreen(deviceMode === 'mobile');
 
   // User activity tracker for smooth auto-fading in ambient views
   const [isAppIdle, setIsAppIdle] = useState<boolean>(false);

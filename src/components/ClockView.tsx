@@ -86,7 +86,7 @@ export const ClockView: React.FC<ClockViewProps> = ({
   onToggleDeviceMode,
 }) => {
   const [time, setTime] = useState<Date>(new Date());
-  const { isFullscreen, toggleFullscreen } = useFullscreen();
+  const { isFullscreen, toggleFullscreen } = useFullscreen(deviceMode === 'mobile');
   const [controlsVisible, setControlsVisible] = useState<boolean>(true);
   const [driftOffset, setDriftOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 

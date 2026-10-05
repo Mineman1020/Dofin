@@ -25,6 +25,12 @@ import { ClockSettings, PomodoroSettings, PomodoroTask, TaskDifficulty, DeviceTy
 import { recordTaskCompletion } from '../utils/statsStorage';
 import { useFullscreen } from '../utils/useFullscreen';
 import { triggerAutoCloudSync } from '../utils/accountService';
+import {
+  loadAndPruneTasks,
+  persistTasksToStorage,
+  setupMidnightTaskPruner,
+  pruneExpiredCompletedTasks,
+} from '../utils/taskStorage';
 
 interface TaskTrackerViewProps {
   clockSettings: ClockSettings;
@@ -61,27 +67,9 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
   deviceMode = 'pc',
   onToggleDeviceMode,
 }) => {
-  // Shared task store across app
+  // Shared task store across app with midnight completed task auto-pruning
   const [tasks, setTasks] = useState<PomodoroTask[]>(() => {
-    try {
-      const saved = localStorage.getItem(TASKS_STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.debug('Failed to load tasks:', e);
-    }
-    return [
-      {
-        id: '1',
-        title: 'Deep study & complete assignments',
-        description: 'Review lecture notes and complete project milestones.',
-        estimatedPomodoros: 2,
-        completedPomodoros: 0,
-        isCompleted: false,
-        createdAt: Date.now(),
-      },
-    ];
+    return loadAndPruneTasks();
   });
 
   // Guards to prevent initial mount and incoming remote sync from echoing/overwriting cloud data
@@ -98,15 +86,17 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
       isRemoteUpdateRef.current = false;
       return;
     }
-    try {
-      const serialized = JSON.stringify(tasks);
-      localStorage.setItem(TASKS_STORAGE_KEY, serialized);
-      localStorage.setItem('deskclock_pomodoro_tasks', serialized);
-      triggerAutoCloudSync();
-    } catch (e) {
-      console.debug('Failed to persist tasks:', e);
-    }
+    persistTasksToStorage(tasks);
   }, [tasks]);
+
+  // Midnight 12:00 AM auto-pruning scheduler: automatically removes tasks done before midnight
+  useEffect(() => {
+    const cleanup = setupMidnightTaskPruner((prunedTasks) => {
+      isRemoteUpdateRef.current = true;
+      setTasks(prunedTasks);
+    });
+    return cleanup;
+  }, []);
 
   // Listen for real-time cloud data sync from other devices or sign in
   useEffect(() => {
@@ -114,7 +104,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
       const customEvt = e as CustomEvent<UserCloudSyncData>;
       if (customEvt.detail?.tasks && Array.isArray(customEvt.detail.tasks)) {
         isRemoteUpdateRef.current = true;
-        setTasks(customEvt.detail.tasks);
+        setTasks(pruneExpiredCompletedTasks(customEvt.detail.tasks));
       }
     };
     window.addEventListener('desk_clock_data_synced', onSynced);
@@ -141,7 +131,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
 
   // Fullscreen state
-  const { isFullscreen, toggleFullscreen } = useFullscreen();
+  const { isFullscreen, toggleFullscreen } = useFullscreen(deviceMode === 'mobile');
 
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -420,7 +410,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
                   isDarkMode ? 'bg-neutral-950 border-neutral-800' : 'bg-neutral-50 border-neutral-200'
                 }`}
               >
-                <span className="text-[10px] uppercase font-mono text-neutral-400">Pending</span>
+                <span className="text-[10px] uppercase font-mono text-neutral-400">To Be Done</span>
                 <span className="text-base font-bold text-amber-500">{pendingTasks}</span>
               </div>
               <div
@@ -492,6 +482,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
                 All ({totalTasks})
               </button>
               <button
+                id="tracker-filter-to-be-done-btn"
                 onClick={() => setFilter('pending')}
                 className={`apple-pill-hover px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
                   filter === 'pending'
@@ -501,7 +492,7 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
                     : 'text-neutral-400 hover:text-neutral-200'
                 }`}
               >
-                Pending ({pendingTasks})
+                To Be Done ({pendingTasks})
               </button>
               <button
                 onClick={() => setFilter('completed')}

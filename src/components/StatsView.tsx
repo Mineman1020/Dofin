@@ -82,7 +82,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [chartViewMode, setChartViewMode] = useState<'combined' | 'focus' | 'tasks' | 'cumulative'>('combined');
   const [unitMode, setUnitMode] = useState<'minutes' | 'hours'>('minutes');
-  const { isFullscreen, toggleFullscreen } = useFullscreen();
+  const { isFullscreen, toggleFullscreen } = useFullscreen(deviceMode === 'mobile');
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
   // Auto-refresh charts when cloud data sync event arrives
