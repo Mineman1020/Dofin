@@ -251,7 +251,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   };
 
   // Fullscreen state with multi-source detection
-  const { isFullscreen } = useFullscreen();
+  const { isFullscreen } = useFullscreen(deviceMode === 'mobile');
 
   // For mobile user only, allow scrolling even in full screen!
   const canScroll =

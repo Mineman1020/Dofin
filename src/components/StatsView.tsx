@@ -205,14 +205,22 @@ export const StatsView: React.FC<StatsViewProps> = ({
   };
 
   // For mobile user only, allow scrolling even in full screen!
+  const isMobile =
+    deviceMode === 'mobile' ||
+    (typeof window !== 'undefined' &&
+      (window.innerWidth <= 768 ||
+        /Mobi|Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)));
+
   const canScroll =
-    deviceMode === 'mobile' || (!isFullscreen && clockSettings?.enableScrolling !== false);
+    isMobile || (!isFullscreen && clockSettings?.enableScrolling !== false);
 
   return (
     <div
       id="stats-view-container"
       className={`relative w-full flex flex-col justify-between font-sans select-none transition-colors duration-500 ${bgClass} ${
-        canScroll
+        isMobile
+          ? 'min-h-[100dvh] h-auto overflow-y-auto overflow-x-hidden pb-24'
+          : canScroll
           ? 'min-h-screen overflow-y-auto overflow-x-hidden pb-16'
           : 'h-screen overflow-hidden pb-0'
       }`}

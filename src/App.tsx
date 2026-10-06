@@ -81,7 +81,15 @@ export default function App() {
   // Sync mobile device class to document so mobile scrolling is uninhibited in fullscreen
   useEffect(() => {
     if (typeof document !== 'undefined') {
-      if (deviceMode === 'mobile') {
+      const isMobileScreen =
+        deviceMode === 'mobile' ||
+        (typeof window !== 'undefined' &&
+          (window.innerWidth <= 768 ||
+            /Mobi|Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+              navigator.userAgent
+            )));
+
+      if (isMobileScreen) {
         document.documentElement.classList.add('mobile-device-mode');
         document.body.classList.add('mobile-device-mode');
       } else {
@@ -530,17 +538,31 @@ export default function App() {
   }, [isShortcutsOpen, isPartyModalOpen, isSettingsOpen, isNameModalOpen, userName, currentView]);
 
   // For mobile user only, allow scrolling even in full screen!
+  const isMobile =
+    deviceMode === 'mobile' ||
+    (typeof window !== 'undefined' &&
+      (window.innerWidth <= 768 ||
+        /Mobi|Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)));
+
   const canScroll =
-    deviceMode === 'mobile' || (!isFullscreen && clockSettings.enableScrolling !== false);
+    isMobile || (!isFullscreen && clockSettings.enableScrolling !== false);
 
   return (
     <div
       id="dek-app"
       className={`relative w-full select-none overflow-x-hidden ${
-        canScroll ? 'min-h-screen overflow-y-auto' : 'h-screen overflow-hidden'
+        isMobile
+          ? 'h-[100dvh] max-h-[100dvh] overflow-y-auto overscroll-y-contain mobile-scroll-container'
+          : canScroll
+          ? 'min-h-[100dvh] h-auto overflow-y-auto overscroll-y-contain'
+          : 'h-screen overflow-hidden'
       } transition-colors duration-500 ${
         isDarkMode ? 'dark bg-neutral-950 text-neutral-100' : 'bg-[#f7f5f0] text-neutral-900'
       }`}
+      style={{
+        WebkitOverflowScrolling: 'touch',
+        touchAction: isMobile || canScroll ? 'pan-y' : undefined,
+      }}
     >
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -549,7 +571,7 @@ export default function App() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 1.008, y: -4 }}
           transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
-          className={`w-full ${canScroll ? 'min-h-screen flex flex-col' : 'h-full flex flex-col overflow-hidden'}`}
+          className={`w-full ${isMobile ? 'min-h-full h-auto flex flex-col' : canScroll ? 'min-h-[100dvh] h-auto flex flex-col' : 'h-full flex flex-col overflow-hidden'}`}
         >
           {/* 1. Welcome Screen */}
           {currentView === 'welcome' && (

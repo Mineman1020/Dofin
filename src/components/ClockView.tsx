@@ -565,15 +565,23 @@ export const ClockView: React.FC<ClockViewProps> = ({
   };
 
   // For mobile user only, allow scrolling even in full screen!
+  const isMobile =
+    deviceMode === 'mobile' ||
+    (typeof window !== 'undefined' &&
+      (window.innerWidth <= 768 ||
+        /Mobi|Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)));
+
   const canScroll =
-    deviceMode === 'mobile' || (!isFullscreen && settings.enableScrolling !== false);
+    isMobile || (!isFullscreen && settings.enableScrolling !== false);
   const matchedBgStyle = getMatchedBackgroundStyle(settings, resolvedTextColor);
 
   return (
     <div
       id="clock-view-container"
       className={`relative w-full flex flex-col items-center select-none transition-colors duration-700 bg-black ${
-        canScroll
+        isMobile
+          ? 'min-h-[100dvh] h-auto justify-between overflow-visible pb-24'
+          : canScroll
           ? 'min-h-screen justify-between overflow-y-auto overflow-x-hidden pb-16'
           : 'h-screen justify-center overflow-hidden pb-0'
       }`}
@@ -1142,8 +1150,8 @@ export const ClockView: React.FC<ClockViewProps> = ({
         )}
       </main>
 
-      {/* Standby Desktop Widgets Layer (Only widgets can be repositioned and resized) */}
-      {(settings.showBatteryWidget || settings.showStopwatchWidget || settings.showWeatherWidget !== false) && (
+      {/* Desktop Standby Widgets Layer (PC Mode: Fixed to bottom) */}
+      {!isMobile && (settings.showBatteryWidget || settings.showStopwatchWidget || settings.showWeatherWidget !== false) && (
         <div
           id="clock-widgets-layer"
           className="fixed bottom-6 left-0 right-0 px-6 flex flex-wrap items-end justify-between gap-4 pointer-events-none z-30"
@@ -1204,6 +1212,94 @@ export const ClockView: React.FC<ClockViewProps> = ({
                 onSnapChange={setActiveSnap}
               />
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Standby & Quick Actions Dock (Always rendered in natural scroll flow on mobile so user can scroll effortlessly in fullscreen) */}
+      {isMobile && (
+        <div
+          id="clock-mobile-scroll-dock"
+          className="w-full max-w-md mx-auto px-4 mt-8 pb-32 flex flex-col items-center gap-4 pointer-events-auto z-30"
+        >
+          {/* Battery Widget Container */}
+          {settings.showBatteryWidget && (
+            <div className="w-full flex justify-center">
+              <BatteryWidget
+                style={settings.batteryWidgetStyle || 'pill'}
+                theme={settings.widgetTheme || 'glass'}
+                isCustomLayout={false}
+                scale={settings.batteryWidgetScale ?? 1}
+                onScaleChange={(scale) => onUpdateSettings?.({ batteryWidgetScale: scale })}
+                accentColor={resolvedAccentColor}
+                isLight={isLight}
+                onSnapChange={setActiveSnap}
+              />
+            </div>
+          )}
+
+          {/* Live Weather Widget Container */}
+          {settings.showWeatherWidget !== false && (
+            <div className="w-full flex justify-center">
+              <WeatherWidget
+                style={settings.weatherWidgetStyle || 'pill'}
+                theme={settings.widgetTheme || 'glass'}
+                isCustomLayout={false}
+                scale={settings.weatherWidgetScale ?? 1}
+                onScaleChange={(scale) => onUpdateSettings?.({ weatherWidgetScale: scale })}
+                accentColor={resolvedAccentColor}
+                isLight={isLight}
+                location={settings.weatherLocation || 'San Francisco, CA'}
+                latitude={settings.weatherLatitude}
+                longitude={settings.weatherLongitude}
+                unit={settings.weatherUnit || 'fahrenheit'}
+                onSnapChange={setActiveSnap}
+              />
+            </div>
+          )}
+
+          {/* Stopwatch Widget Container */}
+          {settings.showStopwatchWidget && (
+            <div className="w-full flex justify-center">
+              <StopwatchWidget
+                style={settings.stopwatchWidgetStyle || 'compact'}
+                theme={settings.widgetTheme || 'glass'}
+                isCustomLayout={false}
+                scale={settings.stopwatchWidgetScale ?? 1}
+                onScaleChange={(scale) => onUpdateSettings?.({ stopwatchWidgetScale: scale })}
+                accentColor={resolvedAccentColor}
+                isLight={isLight}
+                onSnapChange={setActiveSnap}
+              />
+            </div>
+          )}
+
+          {/* Mobile Quick Navigation & Fullscreen Exit Bar */}
+          <div className="w-full flex items-center justify-center gap-2 pt-3 border-t border-white/10 dark:border-white/10 border-black/10">
+            <button
+              type="button"
+              onClick={onGoToPomodoro}
+              className="apple-hover px-3 py-1.5 rounded-xl text-xs font-medium border border-white/15 bg-white/10 backdrop-blur-md text-inherit flex items-center gap-1.5 cursor-pointer"
+            >
+              <Timer className="w-3.5 h-3.5 text-amber-400" />
+              <span>Pomodoro</span>
+            </button>
+            <button
+              type="button"
+              onClick={onGoToTasks}
+              className="apple-hover px-3 py-1.5 rounded-xl text-xs font-medium border border-white/15 bg-white/10 backdrop-blur-md text-inherit flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Tasks</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="apple-hover px-3 py-1.5 rounded-xl text-xs font-medium border border-white/15 bg-white/10 backdrop-blur-md text-inherit flex items-center gap-1.5 cursor-pointer"
+            >
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              <span>{isFullscreen ? 'Exit Full' : 'Full Screen'}</span>
+            </button>
           </div>
         </div>
       )}

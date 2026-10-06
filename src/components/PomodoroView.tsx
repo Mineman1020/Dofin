@@ -47,6 +47,7 @@ import {
 } from '../utils/audio';
 import {
   FONT_OPTIONS,
+  FONT_OPTICAL_SCALES,
   getResolvedPomodoroTheme,
   POMODORO_THEME_PRESETS,
   getMaxPomodoroFontSize,
@@ -676,16 +677,24 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
     return { titleSize, descSize, badgeSize, gap, maxDescLines };
   }, [displayTask, circleDiameter]);
 
+  const isMobile =
+    deviceMode === 'mobile' ||
+    (typeof window !== 'undefined' &&
+      (window.innerWidth <= 768 ||
+        /Mobi|Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)));
+
   // Mobile users can scroll even in fullscreen, but scrolling is disabled during Zen Idle clock mode
   const canScroll =
     !isZenIdle &&
-    (deviceMode === 'mobile' || (!isFullscreen && clockSettings?.enableScrolling !== false));
+    (isMobile || (!isFullscreen && clockSettings?.enableScrolling !== false));
 
   return (
     <div
       id="pomodoro-view-container"
       className={`relative w-full flex flex-col justify-between select-none overflow-x-hidden transition-colors duration-500 ${
-        canScroll
+        isMobile && !isZenIdle
+          ? 'min-h-[100dvh] h-auto overflow-y-auto pb-24'
+          : canScroll
           ? 'min-h-screen overflow-y-auto pb-16'
           : 'h-screen overflow-hidden pb-0'
       } ${
@@ -979,6 +988,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
             fontFamily: selectedFont.cssFamily,
             color: resolvedTheme.textColor,
             fontSize: 'clamp(6.5rem, 20vw, 17rem)',
+            transform: `scale(${FONT_OPTICAL_SCALES[settings.fontFamily || 'outfit'] || 1.0})`,
             textShadow: resolvedTheme.enableGlow
               ? `0 0 35px ${currentTheme.accent}70, 0 0 70px ${currentTheme.accent}30`
               : undefined,
@@ -1248,6 +1258,7 @@ export const PomodoroView: React.FC<PomodoroViewProps> = ({
                     color: resolvedTheme.textColor,
                     fontSize: `${digitFontSize}px`,
                     lineHeight: 1,
+                    transform: `scale(${FONT_OPTICAL_SCALES[settings.fontFamily || 'outfit'] || 1.0})`,
                   }}
                 >
                   <span className="tabular-nums">{formattedMinutes}</span>

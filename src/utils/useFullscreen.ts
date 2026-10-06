@@ -49,24 +49,32 @@ export function isWindowFullscreen(): boolean {
 }
 
 /**
- * Detect if currently running on mobile device or in mobile optimization mode
+ * Detect if currently running on mobile device or in mobile optimization mode.
+ * Robust detection based on screen width, mobile UA, maxTouchPoints, and saved mode.
  */
 export function isMobileDevice(): boolean {
   if (typeof window === 'undefined') return false;
+
   try {
     const saved = localStorage.getItem('desk_clock_device_mode');
     if (saved === 'mobile') return true;
-    if (saved === 'pc') return false;
   } catch {}
-  return (
-    window.innerWidth < 768 ||
-    /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-  );
+
+  // Physical mobile checks
+  const isSmallScreen = window.innerWidth <= 768;
+  const isTouchDevice =
+    typeof navigator !== 'undefined' &&
+    ((navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+      /Mobi|Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+
+  if (isSmallScreen || isTouchDevice) return true;
+
+  return false;
 }
 
 /**
  * Custom React hook for unified fullscreen state management and scroll locking.
- * For mobile devices, scrolling is preserved even after entering fullscreen!
+ * For mobile devices, scrolling is strictly preserved even after entering fullscreen!
  */
 export function useFullscreen(isMobileOverride?: boolean) {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => isWindowFullscreen());
@@ -82,11 +90,22 @@ export function useFullscreen(isMobileOverride?: boolean) {
       document.body.style.overflow = 'hidden';
       document.documentElement.classList.add('app-fullscreen');
       document.body.classList.add('app-fullscreen');
+      document.documentElement.classList.remove('mobile-fullscreen-scroll');
+      document.body.classList.remove('mobile-fullscreen-scroll');
     } else {
       document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
       document.documentElement.classList.remove('app-fullscreen');
       document.body.classList.remove('app-fullscreen');
+
+      if (isMobile) {
+        document.documentElement.classList.add('mobile-fullscreen-scroll');
+        document.body.classList.add('mobile-fullscreen-scroll');
+        document.documentElement.style.overflowY = 'auto';
+        document.body.style.overflowY = 'auto';
+        document.documentElement.style.touchAction = 'pan-y';
+        document.body.style.touchAction = 'pan-y';
+      }
     }
   }, [isMobileOverride]);
 

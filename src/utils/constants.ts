@@ -675,38 +675,38 @@ export const FONT_OPTIONS: { id: ClockFontFamily; name: string; sample: string; 
 
 /**
  * Optical scale normalization factors across different typeface metrics.
- * Ensures the physical and visual bounding clock size remains strictly identical
- * for every font option when using default (and any) digit sizing.
+ * Ensures the physical and visual bounding clock size remains strictly identical (1.0)
+ * for every font option across all size settings (medium, large, huge, fill).
  */
 export const FONT_OPTICAL_SCALES: Record<ClockFontFamily, number> = {
   outfit: 1.0,
   jetbrains: 1.02,
-  orbitron: 1.0,
+  orbitron: 0.98,
   'space-grotesk': 1.0,
-  audiowide: 1.04,
-  vt323: 1.48, // Normalizes VT323 pixel glyph cap-height to match Outfit standard size
-  cinzel: 1.10,
-  playfair: 1.02,
+  audiowide: 0.98,
+  vt323: 1.32,
+  cinzel: 1.02,
+  playfair: 0.98,
   montserrat: 1.0,
-  poppins: 1.0,
-  courier: 1.16,
-  'share-tech': 1.05,
-  bebas: 0.98,
-  syne: 1.0,
-  righteous: 1.02,
+  poppins: 0.98,
+  courier: 1.06,
+  'share-tech': 1.04,
+  bebas: 0.86,
+  syne: 0.96,
+  righteous: 0.98,
   silkscreen: 1.28,
-  cormorant: 1.12,
-  unbounded: 0.95,
-  'major-mono': 1.18,
-  comfortaa: 1.0,
-  oxanium: 1.02,
-  'press-start': 0.84,
-  'rubik-mono': 0.82,
-  fraunces: 1.02,
-  monoton: 1.05,
-  rajdhani: 1.06,
-  'dm-serif': 1.04,
-  bungee: 0.88,
+  cormorant: 1.08,
+  unbounded: 0.90,
+  'major-mono': 1.05,
+  comfortaa: 0.98,
+  oxanium: 0.98,
+  'press-start': 1.34,
+  'rubik-mono': 0.92,
+  fraunces: 0.96,
+  monoton: 0.95,
+  rajdhani: 1.02,
+  'dm-serif': 0.96,
+  bungee: 0.86,
 };
 
 export const SOUND_ALERT_OPTIONS: { id: SoundAlertChoice; name: string; desc: string }[] = [
